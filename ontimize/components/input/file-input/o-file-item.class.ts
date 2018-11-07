@@ -55,8 +55,8 @@ export class OFileItem {
     return this._file.type;
   }
 
-  get lastModifiedDate(): any {
-    return this._file.lastModifiedDate;
+  get lastModified(): any {
+    return this._file.lastModified;
   }
 
   public _onBeforeUpload(notify: boolean = true): void {
