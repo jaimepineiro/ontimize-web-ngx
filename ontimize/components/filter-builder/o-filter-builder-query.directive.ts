@@ -1,7 +1,7 @@
-import { Directive, Optional } from '@angular/core';
+import { Directive, Optional, Inject, forwardRef } from '@angular/core';
 
-import { Util } from '../../utils';
 import { OFilterBuilderComponent } from './o-filter-builder-components';
+import { Util } from '../../utils';
 
 @Directive({
   selector: '[oFilterBuilderQuery]',
@@ -18,7 +18,7 @@ export class OFilterBuilderQueryDirective {
   protected _filterBuilder: OFilterBuilderComponent;
 
   constructor(
-    @Optional() filterBuilder: OFilterBuilderComponent
+    @Optional() @Inject(forwardRef(() => OFilterBuilderComponent)) protected filterBuilder: OFilterBuilderComponent
   ) {
     if (Util.isDefined(filterBuilder)) {
       this._filterBuilder = filterBuilder;
