@@ -1,4 +1,3 @@
-import { HttpModule } from '@angular/http';
 import { HttpClientModule, HttpClient } from '@angular/common/http';
 import { TranslateModule, TranslateLoader, TranslateParser } from '@ngx-translate/core';
 import { BrowserModule } from '@angular/platform-browser';
@@ -75,7 +74,6 @@ import { DndModule } from '@churchs19/ng2-dnd';
 
 export const INTERNAL_ONTIMIZE_MODULES_EXPORTED: any = [
   // Standard modules
-  HttpModule,
   HttpClientModule,
   OSharedModule,
 
@@ -155,7 +153,6 @@ export function OTranslateParserFactory() {
 }
 
 export const INTERNAL_ONTIMIZE_MODULES: any = [
-  HttpModule,
   HttpClientModule,
 
   // Ngx-translate
