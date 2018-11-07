@@ -892,7 +892,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
           }
         }
       };
-      interval = setInterval(timerCallback(evt.tab), 100);
+      interval = setInterval(() => timerCallback(evt.tab), 100);
     });
   }
 
