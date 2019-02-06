@@ -1,4 +1,4 @@
-import { Component, NgModule, ViewEncapsulation } from '@angular/core';
+import { Component, NgModule, ViewEncapsulation, EventEmitter } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 
@@ -7,6 +7,8 @@ import { OSharedModule } from '../../shared';
 import { InputConverter } from '../../decorators';
 import { OAppHeaderModule } from '../../components/app-header/o-app-header.component';
 import { OAppSidenavModule } from '../../components/app-sidenav/o-app-sidenav.component';
+import { OAppLayoutHeaderComponent } from './app-layout-header/o-app-layout-header.component';
+import { OAppLayoutSidenavComponent } from './app-layout-sidenav/o-app-layout-sidenav.component';
 
 export const DEFAULT_INPUTS_O_APP_LAYOUT = [
   'mode',
@@ -20,7 +22,12 @@ export const DEFAULT_INPUTS_O_APP_LAYOUT = [
   'closedSidenavImg: closed-sidenav-image'
 ];
 
-export const DEFAULT_OUTPUTS_O_APP_LAYOUT: any[] = [];
+export const DEFAULT_OUTPUTS_O_APP_LAYOUT: any[] = [
+  'beforeOpenSidenav',
+  'afterOpenSidenav',
+  'beforeCloseSidenav',
+  'afterCloseSidenav'
+];
 
 export type OAppLayoutMode = 'mobile' | 'desktop';
 export type OSidenavMode = 'over' | 'push' | 'side';
@@ -58,6 +65,11 @@ export class OAppLayoutComponent {
   openedSidenavImg: string;
   closedSidenavImg: string;
 
+  beforeOpenSidenav: EventEmitter<boolean> = new EventEmitter<boolean>();
+  afterOpenSidenav: EventEmitter<boolean> = new EventEmitter<boolean>();
+  beforeCloseSidenav: EventEmitter<boolean> = new EventEmitter<boolean>();
+  afterCloseSidenav: EventEmitter<boolean> = new EventEmitter<boolean>();
+
   get showHeader(): boolean {
     return this._showHeader;
   }
@@ -94,11 +106,19 @@ export class OAppLayoutComponent {
       console.error('Invalid `o-app-layout` sidenav-mode (' + val + ')');
     }
   }
+
+  sidenavToggle(opened: boolean) {
+    opened ? this.beforeOpenSidenav.emit() : this.beforeCloseSidenav.emit();
+  }
+
+  afterToggle(opened: boolean) {
+    opened ? this.afterOpenSidenav.emit() : this.afterCloseSidenav.emit();
+  }
 }
 
 @NgModule({
   imports: [CommonModule, OSharedModule, RouterModule, OAppSidenavModule, OAppHeaderModule],
-  declarations: [OAppLayoutComponent],
-  exports: [OAppLayoutComponent]
+  declarations: [OAppLayoutComponent, OAppLayoutHeaderComponent, OAppLayoutSidenavComponent],
+  exports: [OAppLayoutComponent, OAppLayoutHeaderComponent, OAppLayoutSidenavComponent]
 })
 export class OAppLayoutModule { }

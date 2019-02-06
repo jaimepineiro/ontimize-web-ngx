@@ -1,4 +1,4 @@
-import { HostListener, Injector, NgZone, SimpleChange } from '@angular/core';
+import { HostListener, Injector, NgZone, SimpleChange, ChangeDetectorRef } from '@angular/core';
 import { Observable, Subscription } from 'rxjs';
 
 import { Util, Codes } from '../utils';
@@ -24,6 +24,8 @@ export const DEFAULT_INPUTS_O_SERVICE_BASE_COMPONENT = [
 
   // query-on-init [no|yes]: query on bind. Default: yes.
   'queryOnBind: query-on-bind',
+
+  'queryOnEvent: query-on-event',
 
   'pageable',
 
@@ -60,7 +62,17 @@ export const DEFAULT_INPUTS_O_SERVICE_BASE_COMPONENT = [
   'storeState: store-state',
 
   // query-with-null-parent-keys [string][yes|no|true|false]: Indicates whether or not to trigger query method when parent-keys filter is null. Default: false
-  'queryWithNullParentKeys: query-with-null-parent-keys'
+  'queryWithNullParentKeys: query-with-null-parent-keys',
+
+  // [function]: function to execute on query error. Default: no value.
+  'queryFallbackFunction: query-fallback-function'
+  // ,
+
+  // 'insertFallbackFunction: insert-fallback-function',
+
+  // 'updateFallbackFunction: update-fallback-function',
+
+  // 'deleteFallbackFunction: delete-fallback-function'
 ];
 
 export class OServiceBaseComponent implements ILocalStorageComponent {
@@ -79,6 +91,7 @@ export class OServiceBaseComponent implements ILocalStorageComponent {
   queryOnInit: boolean = true;
   @InputConverter()
   queryOnBind: boolean = true;
+  queryOnEvent: any;
   @InputConverter()
   pageable: boolean = false;
   columns: string;
@@ -96,6 +109,10 @@ export class OServiceBaseComponent implements ILocalStorageComponent {
   storeState: boolean = true;
   @InputConverter()
   queryWithNullParentKeys: boolean = false;
+  queryFallbackFunction: Function;
+  // insertFallbackFunction: Function;
+  // updateFallbackFunction: Function;
+  // deleteFallbackFunction: Function;
   /* end of inputs variables */
 
   /* parsed inputs variables */
@@ -113,10 +130,13 @@ export class OServiceBaseComponent implements ILocalStorageComponent {
   protected querySubscription: Subscription;
   protected dataService: any;
   protected _state: any = {};
-  loading: boolean = false;
+  protected _loading: boolean = false;
 
   protected form: OFormComponent;
   protected alreadyStored: boolean = false;
+
+  protected queryOnEventSubscription: Subscription;
+  public cd: ChangeDetectorRef;
 
   constructor(
     protected injector: Injector
@@ -124,6 +144,7 @@ export class OServiceBaseComponent implements ILocalStorageComponent {
     this.dialogService = this.injector.get(DialogService);
     this.localStorageService = this.injector.get(LocalStorageService);
     try {
+      this.cd = this.injector.get(ChangeDetectorRef);
       this.form = this.injector.get(OFormComponent);
     } catch (e) {
       // no parent form
@@ -164,6 +185,28 @@ export class OServiceBaseComponent implements ILocalStorageComponent {
     if (this.form && Util.isDefined(this.dataService)) {
       this.setFormComponent(this.form);
     }
+
+    if (Util.isDefined(this.queryOnEvent) && Util.isDefined(this.queryOnEvent.subscribe)) {
+      const self = this;
+      this.queryOnEventSubscription = this.queryOnEvent.subscribe((value) => {
+        if (Util.isDefined(value) || this.queryWithNullParentKeys) {
+          self.queryData();
+        }
+      });
+    }
+
+    if (typeof this.queryFallbackFunction !== 'function') {
+      this.queryFallbackFunction = undefined;
+    }
+    // if (typeof this.insertFallbackFunction !== 'function') {
+    //   this.insertFallbackFunction = undefined;
+    // }
+    // if (typeof this.updateFallbackFunction !== 'function') {
+    //   this.updateFallbackFunction = undefined;
+    // }
+    // if (typeof this.deleteFallbackFunction !== 'function') {
+    //   this.deleteFallbackFunction = undefined;
+    // }
   }
 
   afterViewInit() {
@@ -182,6 +225,9 @@ export class OServiceBaseComponent implements ILocalStorageComponent {
     }
     if (this.onRouteChangeStorageSubscribe) {
       this.onRouteChangeStorageSubscribe.unsubscribe();
+    }
+    if (this.queryOnEventSubscription) {
+      this.queryOnEventSubscription.unsubscribe();
     }
   }
 
@@ -253,20 +299,18 @@ export class OServiceBaseComponent implements ILocalStorageComponent {
     }
   }
 
-  setFormComponent(form: OFormComponent) {
+  setFormComponent(form: OFormComponent): void {
     if (!Util.isDefined(this.form)) {
       this.form = form;
     }
 
-    var self = this;
-    if (self.queryOnBind) {
-      this.onFormDataSubscribe = this.form.onDataLoaded.subscribe(data => {
-        self.queryData();
-      });
+    if (this.queryOnBind) {
+      this.onFormDataSubscribe = this.form.onDataLoaded.subscribe(() => this.pageable ? this.reloadPaginatedDataFromStart() : this.reloadData());
     }
-    let dataValues = this.form.getDataValues();
+
+    const dataValues = this.form.getDataValues();
     if (Util.isDefined(dataValues) && Object.keys(dataValues).length > 0) {
-      self.queryData();
+      this.queryData();
     }
   }
 
@@ -308,7 +352,9 @@ export class OServiceBaseComponent implements ILocalStorageComponent {
       }, err => {
         self.setData([], []);
         self.loaderSubscription.unsubscribe();
-        if (err && typeof err !== 'object') {
+        if (Util.isDefined(self.queryFallbackFunction)) {
+          self.queryFallbackFunction(err);
+        } else if (err && typeof err !== 'object') {
           self.dialogService.alert('ERROR', err);
         } else {
           self.dialogService.alert('ERROR', 'MESSAGES.ERROR_QUERY');
@@ -350,6 +396,15 @@ export class OServiceBaseComponent implements ILocalStorageComponent {
       });
     });
     return subscription;
+  }
+
+  set loading(value: boolean) {
+    this._loading = value;
+    this.cd.detectChanges();
+  }
+
+  get loading(): boolean {
+    return this._loading;
   }
 
   /**

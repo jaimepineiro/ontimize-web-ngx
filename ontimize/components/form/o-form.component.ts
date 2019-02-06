@@ -1,23 +1,23 @@
-import { ChangeDetectorRef, Component, CUSTOM_ELEMENTS_SCHEMA, ElementRef, EventEmitter, Injector, NgModule, NgZone, OnDestroy, OnInit, ViewChild, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectorRef, Component, CUSTOM_ELEMENTS_SCHEMA, ElementRef, EventEmitter, Injector, NgModule, NgZone, OnDestroy, OnInit, ViewChild, ViewEncapsulation } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
 import { ActivatedRoute, Router, UrlSegment } from '@angular/router';
-import { Observable, Subscription, combineLatest } from 'rxjs';
+import { combineLatest, Observable, Subscription } from 'rxjs';
 
-import { OFormValue, IFormValueOptions } from './OFormValue';
-import { OSharedModule } from '../../shared';
 import { InputConverter } from '../../decorators';
-import { IComponent } from '../o-component.class';
-import { Codes, SQLTypes, Util } from '../../utils';
 import { OFormLayoutManagerComponent } from '../../layouts';
-import { OFormCacheClass } from './cache/o-form.cache.class';
-import { OFormContainerComponent } from './o-form-container.component';
+import { DialogService, NavigationService, OFormPermissions, ONavigationItem, OntimizeService, OPermissions, PermissionsService, SnackBarService } from '../../services';
 import { dataServiceFactory } from '../../services/data-service.provider';
-import { OFormNavigationClass } from './navigation/o-form.navigation.class';
-import { OFormToolbarComponent, OFormToolbarModule } from './o-form-toolbar.component';
+import { OSharedModule } from '../../shared';
+import { Codes, SQLTypes, Util } from '../../utils';
+import { IComponent } from '../o-component.class';
 import { IFormDataComponent, IFormDataTypeComponent } from '../o-form-data-component.class';
-import { DialogService, NavigationService, OntimizeService, SnackBarService, ONavigationItem } from '../../services';
+import { OFormCacheClass } from './cache/o-form.cache.class';
 import { CanComponentDeactivate, CanDeactivateFormGuard } from './guards/o-form-can-deactivate.guard';
+import { OFormNavigationClass } from './navigation/o-form.navigation.class';
+import { OFormContainerComponent } from './o-form-container.component';
+import { OFormToolbarComponent, OFormToolbarModule } from './toolbar/o-form-toolbar.component';
+import { IFormValueOptions, OFormValue } from './OFormValue';
 
 export interface IFormDataComponentHash {
   [attr: string]: IFormDataComponent;
@@ -78,9 +78,6 @@ export const DEFAULT_INPUTS_O_FORM = [
   // delete-method [string]: name of the service method to perform deletions. Default: delete.
   'deleteMethod: delete-method',
 
-  // layout-fill [string][yes|no|true|false]: Default: true;
-  'layoutFill: layout-fill',
-
   // layout-direction [string][column|row]: Default: column
   'layoutDirection: layout-direction',
 
@@ -98,6 +95,7 @@ export const DEFAULT_INPUTS_O_FORM = [
 
   //show-header-navigation [string][yes|no|true|false]: Include navigations buttons in form-toolbar. Default: false;
   'showHeaderNavigation: show-header-navigation',
+
   //attr
   'oattr:attr'
 ];
@@ -132,8 +130,7 @@ export interface OFormInitializationOptions {
   outputs: DEFAULT_OUTPUTS_O_FORM,
   encapsulation: ViewEncapsulation.None,
   host: {
-    '[class.o-form]': 'true',
-    '[class.fill]': 'layoutFill'
+    '[class.o-form]': 'true'
   }
 })
 export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate {
@@ -178,8 +175,6 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
   protected insertMethod: string = Codes.INSERT_METHOD;
   protected updateMethod: string = Codes.UPDATE_METHOD;
   protected deleteMethod: string = Codes.DELETE_METHOD;
-  @InputConverter()
-  layoutFill: boolean = true;
   protected _layoutDirection: string = OFormComponent.DEFAULT_LAYOUT_DIRECTION;
   protected _layoutAlign: string;
 
@@ -241,6 +236,9 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
 
   protected formContainer: OFormContainerComponent;
 
+  protected permissionsService: PermissionsService;
+  protected permissions: OFormPermissions;
+
   public static Mode(): any {
     enum m {
       QUERY,
@@ -270,8 +268,9 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
     this.dialogService = injector.get(DialogService);
     this.navigationService = injector.get(NavigationService);
     this.snackBarService = injector.get(SnackBarService);
-    const self = this;
+    this.permissionsService = this.injector.get(PermissionsService);
 
+    const self = this;
     this.reloadStream = combineLatest(
       self.onFormInitStream.asObservable(),
       self.formNavigation.navigationStream.asObservable()
@@ -583,6 +582,8 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
     }
 
     this.mode = OFormComponent.Mode().INITIAL;
+
+    this.permissions = this.permissionsService.getFormPermissions(this.oattr, this.actRoute);
   }
 
   reinitialize(options: OFormInitializationOptions) {
@@ -787,8 +788,6 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
     if (useFilter) {
       filter = this.getCurrentKeysValues();
     }
-    this.formCache.restartCache();
-    this.clearComponentsOldValue();
     this.queryData(filter);
   }
 
@@ -799,6 +798,7 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
     componentsKeys.forEach(compKey => {
       const comp: IFormDataComponent = components[compKey];
       (comp as any).oldValue = undefined;
+      comp.getFormControl().setValue(undefined);
     });
   }
 
@@ -910,6 +910,8 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
       console.warn('OFormComponent: no filter configured! aborting query');
       return;
     }
+    this.formCache.restartCache();
+    this.clearComponentsOldValue();
     if (this.querySubscription) {
       this.querySubscription.unsubscribe();
     }
@@ -1005,7 +1007,6 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
   }
 
   protected postCorrectInsert(result: any) {
-    console.log('[OFormComponent.postCorrectInsert]', result);
     this.snackBarService.open('MESSAGES.INSERTED', { icon: 'check_circle' });
   }
 
@@ -1077,7 +1078,6 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
   }
 
   protected postCorrectUpdate(result: any) {
-    console.log('[OFormComponent.postCorrectUpdate]', result);
     this.snackBarService.open('MESSAGES.SAVED', { icon: 'check_circle' });
   }
 
@@ -1107,7 +1107,6 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
   }
 
   protected postCorrectDelete(result: any) {
-    console.log('[OFormComponent.postCorrectDelete]', result);
     this.snackBarService.open('MESSAGES.DELETED', { icon: 'check_circle' });
   }
 
@@ -1446,6 +1445,22 @@ export class OFormComponent implements OnInit, OnDestroy, CanComponentDeactivate
   protected isUpdateModePath(path: string): boolean {
     const navData: ONavigationItem = this.navigationService.getPreviousRouteData();
     return Util.isDefined(navData) && path === navData.getEditFormRoute();
+  }
+
+  getFormComponentPermissions(attr: string): OPermissions {
+    let permissions: OPermissions;
+    if (Util.isDefined(this.permissions)) {
+      permissions = (this.permissions.components || []).find(comp => comp.attr === attr);
+    }
+    return permissions;
+  }
+
+  getActionsPermissions(): OPermissions[] {
+    let permissions: OPermissions[];
+    if (Util.isDefined(this.permissions)) {
+      permissions = (this.permissions.actions || []);
+    }
+    return permissions;
   }
 }
 

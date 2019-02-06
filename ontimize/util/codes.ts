@@ -18,6 +18,10 @@ export class Codes {
   public static DETAIL_MODE_CLICK = 'click';
   public static DETAIL_MODE_DBLCLICK_VALUES = ['dblclick', 'doubleclick'];
 
+  public static EDITION_MODE_NONE = 'none';
+  public static EDITION_MODE_CLICK = 'click';
+  public static EDITION_MODE_DBLCLICK_VALUES = ['dblclick', 'doubleclick'];
+
   public static SELECTION_MODE_NONE = 'none';
   public static SELECTION_MODE_SINGLE = 'single';
   public static SELECTION_MODE_MULTIPLE = 'multiple';
@@ -44,6 +48,7 @@ export class Codes {
   public static SESSION_EXPIRED_KEY = 'session-expired';
 
   public static LOGIN_ROUTE = '/login';
+  public static FORBIDDEN_ROUTE = '403';
   public static DEFAULT_EDIT_ROUTE = 'edit';
   public static DEFAULT_DETAIL_ROUTE = undefined;
   public static DEFAULT_INSERT_ROUTE = 'new';
@@ -63,6 +68,11 @@ export class Codes {
   public static COLUMN_TITLE_ALIGN_AUTO = 'auto';
   public static AVAILABLE_COLUMN_TITLE_ALIGNS =
   [Codes.COLUMN_TITLE_ALIGN_START, Codes.COLUMN_TITLE_ALIGN_CENTER, Codes.COLUMN_TITLE_ALIGN_END, Codes.COLUMN_TITLE_ALIGN_AUTO];
+
+  public static O_MAT_ERROR_STANDARD = 'standard';
+  public static O_MAT_ERROR_LITE = 'lite';
+
+  public static O_INPUTS_OPTIONS_COLOR_ACCENT = 'accent';
 
   static isDoubleClickMode(value: string): boolean {
     return Codes.DETAIL_MODE_DBLCLICK_VALUES.indexOf(value) !== -1;

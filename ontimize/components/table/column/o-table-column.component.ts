@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, ComponentFactory, ComponentFactoryResolver, EventEmitter, forwardRef, Inject, Injector, OnDestroy, OnInit, ViewChild, ViewContainerRef } from '@angular/core';
+import { AfterViewInit, Component, ComponentFactory, ComponentFactoryResolver, EventEmitter, forwardRef, Inject, Injector, OnDestroy, OnInit, ViewChild, ViewContainerRef, ChangeDetectionStrategy } from '@angular/core';
 import { Subscription } from 'rxjs';
 
 import { Util } from '../../../util/util';
@@ -6,7 +6,7 @@ import { Codes } from '../../../util/codes';
 import { SQLTypes } from '../../../util/sqltypes';
 import { InputConverter } from '../../../decorators';
 import { OTableComponent } from '../o-table.component';
-import { DateFilterFunction } from '../../../components/input/date-input/o-date-input.component';
+import { DateFilterFunction, ODateValueType } from '../../../components/input/date-input/o-date-input.component';
 
 import {
   OTableCellRendererDateComponent,
@@ -41,8 +41,11 @@ export const DEFAULT_INPUTS_O_TABLE_COLUMN = [
   // title [string]: column title. Default: no value.
   'title',
 
-  // title [start-center-end]: column title alignment. Default: center.
+  // title-align [start | center | end]: column title alignment. Default: center.
   'titleAlign: title-align',
+
+  // content-align [start | center | end]: column content alignment.
+  'contentAlign: content-align',
 
   // orderable [no|yes]: column can be sorted. Default: yes.
   'orderable',
@@ -56,22 +59,18 @@ export const DEFAULT_INPUTS_O_TABLE_COLUMN = [
   // editable [no|yes]: column can be edited directly over the table. Default: no.
   'editable',
 
-  // date-model-type [timestamp|string]: if a date column is editable, its model type must be defined to be able to save its value,
-  // e.g. classic ontimize server dates come as timestamps (number), but to be able to save them they have to be send as strings with
-  // the format 'YYYY-MM-DD HH:mm:ss' (especified in the date-model-format attribute). Default: timestamp.
-  'dateModelType: date-model-type',
-
-  // date-model-format [string]: if date model type is string, its date model format should be defined. Default: ISO date.
-  'dateModelFormat: date-model-format',
-
   'width',
 
+  // only in pixels
   'minWidth: min-width',
+
+  // only in pixels
+  'maxWidth: max-width',
 
   // async-load [no|yes|true|false]: asynchronous query. Default: no
   'asyncLoad : async-load',
 
-  // sqltype[string]: Data type according to Java standard. See SQLType ngClass. Default: 'OTHER'
+  // sqltype[string]: Data type according to Java standard. See SQLType class. Default: 'OTHER'
   'sqlType: sql-type',
 
   'tooltip',
@@ -81,6 +80,8 @@ export const DEFAULT_INPUTS_O_TABLE_COLUMN = [
   'tooltipFunction: tooltip-function',
 
   'multiline',
+
+  'resizable',
 
   ...OTableCellRendererBooleanComponent.DEFAULT_INPUTS_O_TABLE_CELL_RENDERER_BOOLEAN,
   ...OTableCellRendererCurrencyComponent.DEFAULT_INPUTS_O_TABLE_CELL_RENDERER_CURRENCY, // includes Integer and Real
@@ -105,6 +106,7 @@ export const DEFAULT_OUTPUTS_O_TABLE_COLUMN = [
   selector: 'o-table-column',
   templateUrl: './o-table-column.component.html',
   styleUrls: ['./o-table-column.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   inputs: DEFAULT_INPUTS_O_TABLE_COLUMN,
   outputs: DEFAULT_OUTPUTS_O_TABLE_COLUMN
 })
@@ -142,15 +144,18 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
   public attr: string;
   public title: string;
   public titleAlign: string;
+  public contentAlign: 'start' | 'center' | 'end';
   public sqlType: string;
   protected _SQLType: number;
   protected _defaultSQLTypeKey: string = 'OTHER';
-  protected _orderable: boolean = true;
+  protected _orderable: boolean;
+  protected _resizable: boolean;
   protected _searchable: boolean = true;
   @InputConverter()
   public editable: boolean = false;
   public width: string;
   public minWidth: string;
+  public maxWidth: string;
   @InputConverter()
   public tooltip: boolean = false;
   tooltipValue: string;
@@ -170,16 +175,17 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
   protected thousandSeparator: string = ',';
   /* input renderer real */
   protected decimalSeparator: string = '.';
-  protected decimalDigits: number = 2;
+
   /* input renderer currency */
   protected currencySymbol: string;
   protected currencySymbolPosition: string;
 
   /* input renderer boolean */
-  protected trueValueType: string;
-  protected trueValue: string;
-  protected falseValueType: string;
-  protected falseValue: string;
+  protected trueValue: any;
+  protected falseValue: any;
+  protected renderTrueValue: any;
+  protected renderFalseValue: any;
+  protected renderType: string = 'string';
   protected booleanType: string = 'boolean';
 
   /* input image */
@@ -222,6 +228,7 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
   protected oTouchUi: boolean = false;
   protected oStartAt: string;
   protected filterDate: DateFilterFunction;
+  protected dateValueType: ODateValueType = 'timestamp';
 
   /* input editor integer */
   @InputConverter()
@@ -230,10 +237,16 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
   max: number;
   @InputConverter()
   step: number;
+  @InputConverter()
+  minDecimalDigits: number = 2;
+  @InputConverter()
+  maxDecimalDigits: number = 2;
 
   /* input editor boolean */
   @InputConverter()
   indeterminateOnNull: boolean = false;
+  @InputConverter()
+  autoCommit: boolean;
 
   /* output cell renderer action */
   onClick: EventEmitter<Object> = new EventEmitter<Object>();
@@ -294,7 +307,8 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
               newRenderer.currencySymbol = this.currencySymbol;
               newRenderer.currencySymbolPosition = this.currencySymbolPosition;
               newRenderer.decimalSeparator = this.decimalSeparator;
-              newRenderer.decimalDigits = this.decimalDigits;
+              newRenderer.minDecimalDigits = this.minDecimalDigits;
+              newRenderer.maxDecimalDigits = this.maxDecimalDigits;
               newRenderer.grouping = this.grouping;
               newRenderer.thousandSeparator = this.thousandSeparator;
               break;
@@ -306,16 +320,18 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
               newRenderer.thousandSeparator = this.thousandSeparator;
               break;
             case 'boolean':
-              newRenderer.trueValueType = this.trueValueType;
               newRenderer.trueValue = this.trueValue;
-              newRenderer.falseValueType = this.falseValueType;
               newRenderer.falseValue = this.falseValue;
+              newRenderer.renderTrueValue = this.renderTrueValue;
+              newRenderer.renderFalseValue = this.renderFalseValue;
+              newRenderer.renderType = this.renderType;
               newRenderer.booleanType = this.booleanType;
               break;
             case 'real':
             case 'percentage':
               newRenderer.decimalSeparator = this.decimalSeparator;
-              newRenderer.decimalDigits = this.decimalDigits;
+              newRenderer.minDecimalDigits = this.minDecimalDigits;
+              newRenderer.maxDecimalDigits = this.maxDecimalDigits;
               newRenderer.grouping = this.grouping;
               newRenderer.thousandSeparator = this.thousandSeparator;
               break;
@@ -367,9 +383,11 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
             editor.oTouchUi = propsOrigin.oTouchUi;
             editor.oStartAt = propsOrigin.oStartAt;
             editor.filterDate = propsOrigin.filterDate;
+            editor.dateValueType = propsOrigin.dateValueType;
             break;
           case 'boolean':
             editor.indeterminateOnNull = propsOrigin.indeterminateOnNull;
+            editor.autoCommit = propsOrigin.autoCommit;
             editor.trueValue = propsOrigin.trueValue;
             editor.falseValue = propsOrigin.falseValue;
             editor.booleanType = propsOrigin.booleanType;
@@ -420,6 +438,9 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
     if (oCol !== undefined) {
       oCol.renderer = this.renderer;
     }
+    if (this.renderer.ngOnInit) {
+      this.renderer.ngOnInit();
+    }
   }
 
   public registerEditor(editor: any) {
@@ -427,6 +448,9 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
     const oCol = this.table.getOColumn(this.attr);
     if (oCol !== undefined) {
       oCol.editor = this.editor;
+    }
+    if (this.editor.ngOnInit) {
+      this.editor.ngOnInit();
     }
   }
 
@@ -446,6 +470,18 @@ export class OTableColumnComponent implements OnDestroy, OnInit, AfterViewInit {
 
   get orderable(): any {
     return this._orderable;
+  }
+
+  set resizable(val: any) {
+    this._resizable = typeof val === 'boolean' ? val : Util.parseBoolean(val, true);
+    const oCol = this.table.getOColumn(this.attr);
+    if (oCol) {
+      oCol.resizable = this._resizable;
+    }
+  }
+
+  get resizable(): any {
+    return this._resizable;
   }
 
   set searchable(val: any) {

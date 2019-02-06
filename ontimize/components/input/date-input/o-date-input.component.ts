@@ -2,26 +2,28 @@ import { AfterViewChecked, Component, ElementRef, forwardRef, Inject, Injector, 
 import { CommonModule } from '@angular/common';
 import { MomentDateAdapter } from '@angular/material-moment-adapter';
 import { DateAdapter, MAT_DATE_LOCALE, MatDatepicker, MatDatepickerInput, MatDatepickerInputEvent } from '@angular/material';
-import { MediaChange, ObservableMedia } from '@angular/flex-layout';
+import { MediaChange, MediaObserver } from '@angular/flex-layout';
 import { Subscription } from 'rxjs';
 
 import moment from 'moment';
 
 import { OSharedModule, OntimizeMomentDateAdapter } from '../../../shared';
 import { MomentService } from '../../../services';
-import { OFormValue } from '../../form/OFormValue';
+import { OFormValue, IFormValueOptions } from '../../form/OFormValue';
 import { InputConverter } from '../../../decorators';
+import { Util } from '../../../util/util';
+import { SQLTypes } from '../../../util/sqltypes';
 import { OFormComponent } from '../../form/o-form.component';
 import { OFormDataComponent, OValueChangeEvent } from '../../o-form-data-component.class';
 import { DEFAULT_INPUTS_O_TEXT_INPUT, DEFAULT_OUTPUTS_O_TEXT_INPUT } from '../text-input/o-text-input.component';
-import { Util } from '../../../util/util';
+
+export type ODateValueType = 'string' | 'date' | 'timestamp' | 'iso-8601';
 
 export const DEFAULT_OUTPUTS_O_DATE_INPUT = [
   ...DEFAULT_OUTPUTS_O_TEXT_INPUT
 ];
 
 export const DEFAULT_INPUTS_O_DATE_INPUT = [
-  ...DEFAULT_INPUTS_O_TEXT_INPUT,
   'oformat: format',
   'olocale: locale',
   'oStartView: start-view',
@@ -30,7 +32,9 @@ export const DEFAULT_INPUTS_O_DATE_INPUT = [
   'oTouchUi: touch-ui',
   'oStartAt: start-at',
   'filterDate: filter-date',
-  'textInputEnabled: text-input-enabled'
+  'textInputEnabled: text-input-enabled',
+  'valueType: value-type',
+  ...DEFAULT_INPUTS_O_TEXT_INPUT
 ];
 
 export type DateFilterFunction = (date: Date) => boolean;
@@ -71,15 +75,17 @@ export class ODateInputComponent extends OFormDataComponent implements AfterView
   protected _filterDate: DateFilterFunction;
   @InputConverter()
   textInputEnabled: boolean = true;
+  protected _valueType: ODateValueType = 'timestamp';
 
   protected _minDateString: string;
   protected _maxDateString: string;
 
   private momentSrv: MomentService;
-  protected media: ObservableMedia;
+  protected media: MediaObserver;
 
   protected mediaSubscription: Subscription;
   protected onLanguageChangeSubscription: Subscription;
+  protected dateValue: Date;
 
   constructor(
     @Optional() @Inject(forwardRef(() => OFormComponent)) form: OFormComponent,
@@ -91,7 +97,7 @@ export class ODateInputComponent extends OFormDataComponent implements AfterView
     this.momentDateAdapter = dateAdapter;
     this._defaultSQLTypeKey = 'DATE';
     this.momentSrv = this.injector.get(MomentService);
-    this.media = this.injector.get(ObservableMedia);
+    this.media = this.injector.get(MediaObserver);
   }
 
   ngOnInit() {
@@ -137,13 +143,13 @@ export class ODateInputComponent extends OFormDataComponent implements AfterView
     if (this.updateLocaleOnChange) {
       this.onLanguageChangeSubscription = this.translateService.onLanguageChanged.subscribe(() => {
         this.momentDateAdapter.setLocale(this.translateService.getCurrentLang());
-        this.setValue(this.getValueAsDate());
+        this.setValue(this.getValue());
       });
     }
   }
 
   ngAfterViewChecked(): void {
-    this.mediaSubscription = this.media.subscribe((change: MediaChange) => {
+    this.mediaSubscription = this.media.media$.subscribe((change: MediaChange) => {
       if (['xs', 'sm'].indexOf(change.mqAlias) !== -1) {
         this.touchUi = Util.isDefined(this.oTouchUi) ? this.oTouchUi : true;
       }
@@ -163,36 +169,16 @@ export class ODateInputComponent extends OFormDataComponent implements AfterView
     }
   }
 
-  set data(value: any) {
-    if (value && Util.isDefined(value.value) && typeof value.value === 'number') {
-      value.value = new Date(value.value);
-    }
-    super.setData.call(this, value);
-  }
-
   getValueAsDate(): any {
-    let value = this.getValue();
-    if (typeof value !== 'undefined') {
-      if (typeof value === 'number') {
-        let dateObj = new Date(value);
-        this.ensureOFormValue(dateObj);
-        return dateObj;
-      }
-    }
-    return value;
+    return this.dateValue;
   }
 
   getValue(): any {
-    let timestampValue: any;
-    if (this.value instanceof OFormValue) {
-      if (this.value.value) {
-        timestampValue = this.value.value;
-      }
+    let timestampValue = super.getValue();
+    if (timestampValue && timestampValue instanceof Date) {
+      timestampValue = timestampValue.getTime();
     }
-    if (timestampValue) {
-      return timestampValue;
-    }
-    return undefined;
+    return timestampValue;
   }
 
   get showClearButton(): boolean {
@@ -205,17 +191,25 @@ export class ODateInputComponent extends OFormDataComponent implements AfterView
     }
   }
 
-  onModelChange(event: any) {
-    if (!this.value) {
-      this.value = new OFormValue();
-    }
-    this.ensureOFormValue(event);
-
-    this.onChange.emit(event);
-  }
-
   onChangeEvent(event: MatDatepickerInputEvent<any>) {
-    this.setValue(event.value, {
+    const isValid = event.value && event.value.isValid && event.value.isValid();
+    let val = isValid ? event.value.valueOf() : event.value;
+    const m = moment(val);
+    switch (this.valueType) {
+      case 'string':
+        val = m.format(this.oformat);
+        break;
+      case 'date':
+        val = new Date(val);
+        break;
+      case 'iso-8601':
+        val = m.toISOString();
+        break;
+      case 'timestamp':
+      default:
+        break;
+    }
+    this.setValue(val, {
       changeType: OValueChangeEvent.USER_CHANGE,
       emitEvent: false,
       emitModelToViewChange: false
@@ -269,6 +263,87 @@ export class ODateInputComponent extends OFormDataComponent implements AfterView
     this.datepicker.touchUi = this.touchUi;
   }
 
+  protected ensureODateValueType(val: any) {
+    if (!Util.isDefined(val)) {
+      return val;
+    }
+    let result = val;
+    switch (this.valueType) {
+      case 'string':
+        if (typeof val === 'string') {
+          let m = moment(val, this.oformat);
+          if (m.isValid()) {
+            this.dateValue = new Date(m.valueOf());
+          }
+        } else {
+          result = undefined;
+        }
+        break;
+      case 'date':
+        if ((val instanceof Date)) {
+          this.dateValue = val;
+        } else {
+          result = undefined;
+        }
+        break;
+      case 'timestamp':
+        if (typeof val === 'number') {
+          this.dateValue = new Date(val);
+        } else {
+          result = undefined;
+        }
+        break;
+      case 'iso-8601':
+        if (typeof val !== 'string') {
+          const acceptTimestamp = typeof val === 'number' && this.getSQLType() === SQLTypes.TIMESTAMP;
+          if (acceptTimestamp) {
+            this.dateValue = new Date(val);
+          } else {
+            result = undefined;
+          }
+        } else {
+          let m = moment(val);
+          if (m.isValid()) {
+            this.dateValue = new Date(m.valueOf());
+          } else {
+            result = undefined;
+          }
+        }
+        break;
+      default:
+        break;
+    }
+    if (!Util.isDefined(result)) {
+      console.warn(`ODateInputComponent value (${val}) is not consistent with value-type (${this.valueType})`);
+    }
+    return result;
+  }
+
+  protected setFormValue(val: any, options?: IFormValueOptions, setDirty: boolean = false) {
+    let value = val;
+    if (val instanceof OFormValue) {
+      value = val.value;
+    }
+    value = this.ensureODateValueType(value);
+    super.setFormValue(value, options, setDirty);
+  }
+
+  set valueType(val: any) {
+    this._valueType = ODateInputComponent.convertToODateValueType(val);
+  }
+
+  get valueType(): any {
+    return this._valueType;
+  }
+
+  static convertToODateValueType(val: any): ODateValueType {
+    let result: ODateValueType = 'timestamp';
+    const lowerVal = (val || '').toLowerCase();
+    if (lowerVal === 'string' || lowerVal === 'date' || lowerVal === 'timestamp' || lowerVal === 'iso-8601') {
+      result = lowerVal;
+    }
+    return result;
+  }
 }
 
 @NgModule({

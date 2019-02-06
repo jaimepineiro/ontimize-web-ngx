@@ -1,6 +1,6 @@
 import { AfterViewInit, AfterViewChecked, ChangeDetectionStrategy, ChangeDetectorRef, Component, Injector, NgModule, OnDestroy, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MediaChange, ObservableMedia } from '@angular/flex-layout';
+import { MediaChange, MediaObserver } from '@angular/flex-layout';
 import { Subscription } from 'rxjs';
 
 import { OSharedModule } from '../../shared/shared.module';
@@ -24,8 +24,7 @@ export const DEFAULT_OUTPUTS_O_MENU_LAYOUT = [
   outputs: DEFAULT_OUTPUTS_O_MENU_LAYOUT,
   encapsulation: ViewEncapsulation.None,
   host: {
-    '[class.o-menu-layout]': 'true',
-    '[class.o-card-menu-layout-bigscreen]': 'isSmallScreen'
+    '[class.o-menu-layout]': 'true'
   },
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -35,7 +34,7 @@ export class OCardMenuLayoutComponent implements AfterViewChecked, AfterViewInit
   public static DEFAULT_OUTPUTS_O_MENU_LAYOUT = DEFAULT_OUTPUTS_O_MENU_LAYOUT;
 
   protected mediaWatch: Subscription;
-  protected media: ObservableMedia;
+  protected media: MediaObserver;
   protected translateService: OTranslateService;
   protected translateServiceSubscription: Subscription;
   protected appMenuService: AppMenuService;
@@ -56,7 +55,7 @@ export class OCardMenuLayoutComponent implements AfterViewChecked, AfterViewInit
     private injector: Injector,
     private cd: ChangeDetectorRef
   ) {
-    this.media = this.injector.get(ObservableMedia);
+    this.media = this.injector.get(MediaObserver);
     this.translateService = this.injector.get(OTranslateService);
     this.appMenuService = this.injector.get(AppMenuService);
     this.menuRoots = this.appMenuService.getMenuRoots();
@@ -71,7 +70,7 @@ export class OCardMenuLayoutComponent implements AfterViewChecked, AfterViewInit
   }
 
   ngAfterViewChecked(): void {
-    this.mediaWatch = this.media.subscribe((change: MediaChange) => {
+    this.mediaWatch = this.media.media$.subscribe((change: MediaChange) => {
       if (['xs', 'sm'].indexOf(change.mqAlias) !== -1) {
         this.isSmallScreen = true;
       }

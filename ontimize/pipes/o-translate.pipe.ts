@@ -5,12 +5,12 @@ import {
   NgModule,
   ModuleWithProviders,
   OnDestroy,
-  EventEmitter,
   ChangeDetectorRef
 } from '@angular/core';
 
 import { OTranslateService } from '../services';
 import { Util } from '../utils';
+import { Subscription } from 'rxjs';
 
 export interface ITranslatePipeArgument {
   values?: any[];
@@ -25,8 +25,7 @@ export class OTranslatePipe implements PipeTransform, OnDestroy {
   lastKey: string;
   lastParams: any;
 
-  onLanguageChanged: EventEmitter<any>;
-
+  onLanguageChanged: Subscription;
   protected oTranslateService: OTranslateService;
 
   constructor(protected injector: Injector, private _ref: ChangeDetectorRef) {

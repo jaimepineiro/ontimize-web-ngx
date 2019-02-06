@@ -2,16 +2,16 @@ import { Component, ElementRef, forwardRef, Inject, Injector, NgModule, Optional
 import { CommonModule } from '@angular/common';
 import { MatSelect, MatSelectChange } from '@angular/material';
 
-import { Util } from '../../../util/util';
-import { Codes } from '../../../util/codes';
-import { OFormComponent } from '../../form/o-form.component';
-import { OSharedModule } from '../../../shared/shared.module';
 import { InputConverter } from '../../../decorators/input-converter';
-import { OntimizeService } from '../../../services/ontimize.service';
-import { IFormValueOptions, OFormValue } from '../../form/OFormValue';
-import { OFormServiceComponent } from '../o-form-service-component.class';
 import { dataServiceFactory } from '../../../services/data-service.provider';
+import { OntimizeService } from '../../../services/ontimize.service';
+import { OSharedModule } from '../../../shared/shared.module';
+import { Codes } from '../../../util/codes';
+import { Util } from '../../../util/util';
+import { OFormComponent } from '../../form/o-form.component';
+import { IFormValueOptions, OFormValue } from '../../form/OFormValue';
 import { OValueChangeEvent } from '../../o-form-data-component.class';
+import { OFormServiceComponent } from '../o-form-service-component.class';
 
 export const DEFAULT_INPUTS_O_COMBO = [
   ...OFormServiceComponent.DEFAULT_INPUTS_O_FORM_SERVICE_COMPONENT,
@@ -29,7 +29,8 @@ export const DEFAULT_OUTPUTS_O_COMBO = [
   moduleId: module.id,
   selector: 'o-combo',
   providers: [
-    { provide: OntimizeService, useFactory: dataServiceFactory, deps: [Injector] }
+    { provide: OntimizeService, useFactory: dataServiceFactory, deps: [Injector] },
+    { provide: OFormServiceComponent, useExisting: forwardRef(() => OComboComponent) }
   ],
   inputs: DEFAULT_INPUTS_O_COMBO,
   outputs: DEFAULT_OUTPUTS_O_COMBO,
@@ -78,7 +79,7 @@ export class OComboComponent extends OFormServiceComponent implements OnInit, Af
     if (this.queryOnInit) {
       this.queryData();
     } else if (this.queryOnBind) {
-      //TODO do it better. When changing tabs it is necessary to invoke new query
+      // TODO do it better. When changing tabs it is necessary to invoke new query
       this.syncDataIndex();
     }
   }
@@ -101,7 +102,8 @@ export class OComboComponent extends OFormServiceComponent implements OnInit, Af
     } else {
       this.value = new OFormValue(this.defaultValue);
     }
-    this.syncDataIndex();
+    // This call make the component querying its data multiple times
+    // this.syncDataIndex();
   }
 
   ngOnDestroy() {
@@ -112,9 +114,9 @@ export class OComboComponent extends OFormServiceComponent implements OnInit, Af
     return this.nullSelection;
   }
 
-  syncDataIndex() {
-    super.syncDataIndex();
-    if (this.nullSelection && Util.isDefined(this._currentIndex)) {
+  syncDataIndex(queryIfNotFound: boolean = true) {
+    super.syncDataIndex(queryIfNotFound);
+    if (this._currentIndex !== undefined && this.nullSelection) {
       // first position is for null selection that it is not included into dataArray
       this._currentIndex += 1;
     }
@@ -182,7 +184,7 @@ export class OComboComponent extends OFormServiceComponent implements OnInit, Af
     if (!this.selectModel.panelOpen) {
       return;
     }
-    var newValue = event.value;
+    const newValue = event.value;
     this.setValue(newValue, {
       changeType: OValueChangeEvent.USER_CHANGE,
       emitEvent: false,
@@ -193,10 +195,10 @@ export class OComboComponent extends OFormServiceComponent implements OnInit, Af
   getOptionDescriptionValue(item: any = {}) {
     let descTxt = '';
     if (this.descriptionColArray && this.descriptionColArray.length > 0) {
-      var self = this;
+      const self = this;
       this.descriptionColArray.forEach((col, index) => {
         let txt = item[col];
-        if (txt) {
+        if (Util.isDefined(txt)) {
           if (self.translate && self.translateService) {
             txt = self.translateService.get(txt);
           }
@@ -252,6 +254,10 @@ export class OComboComponent extends OFormServiceComponent implements OnInit, Af
       if (!Util.isDefined(record)) {
         return;
       }
+    } else {
+      if (Util.isDefined(val)) {
+        super.setValue(val, options);
+      }
     }
     super.setValue(val, options);
   }
@@ -281,7 +287,7 @@ export class OComboComponent extends OFormServiceComponent implements OnInit, Af
 
 @NgModule({
   declarations: [OComboComponent],
-  imports: [OSharedModule, CommonModule],
+  imports: [CommonModule, OSharedModule],
   exports: [OComboComponent]
 })
 export class OComboModule { }

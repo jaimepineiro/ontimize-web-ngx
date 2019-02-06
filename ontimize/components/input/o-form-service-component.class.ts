@@ -1,29 +1,31 @@
-import { ElementRef, Injector } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { ElementRef, EventEmitter, Injector, NgZone } from '@angular/core';
+import { BehaviorSubject, Subscription } from 'rxjs';
+import { Observable } from 'rxjs';
 
-import { Codes, Util } from '../../utils';
-import { ServiceUtils } from '../service.utils';
 import { InputConverter } from '../../decorators';
-import { IFormValueOptions } from '../form/OFormValue';
-import { OFormComponent } from '../form/o-form.component';
 import { DialogService, OntimizeService } from '../../services';
-import { DEFAULT_INPUTS_O_FORM_DATA_COMPONENT, OFormDataComponent, DEFAULT_OUTPUTS_O_FORM_DATA_COMPONENT } from '../o-form-data-component.class';
+import { Codes, Util } from '../../utils';
+import { OFormComponent } from '../form/o-form.component';
+import { IFormValueOptions } from '../form/OFormValue';
+import {
+  DEFAULT_INPUTS_O_FORM_DATA_COMPONENT,
+  DEFAULT_OUTPUTS_O_FORM_DATA_COMPONENT,
+  OFormDataComponent,
+} from '../o-form-data-component.class';
+import { ServiceUtils } from '../service.utils';
 
 export const DEFAULT_INPUTS_O_FORM_SERVICE_COMPONENT = [
   ...DEFAULT_INPUTS_O_FORM_DATA_COMPONENT,
-  //static-data [Array<any>] : way to populate with static data. Default: no value.
+  // static-data [Array<any>] : way to populate with static data. Default: no value.
   'staticData: static-data',
-
   'entity',
   'service',
   'columns',
   'valueColumn: value-column',
   'valueColumnType: value-column-type',
   'parentKeys: parent-keys',
-
   // Visible columns into selection dialog from parameter 'columns'. With empty parameter all columns are visible.
   'visibleColumns: visible-columns',
-
   // Visible columns in text field. By default, it is the parameter value of visible columns.
   'descriptionColumns: description-columns',
 
@@ -36,16 +38,19 @@ export const DEFAULT_INPUTS_O_FORM_SERVICE_COMPONENT = [
   // query-method [string]: name of the service method to perform queries. Default: query.
   'queryMethod: query-method',
 
-  'serviceType : service-type',
+  'serviceType: service-type',
 
   // query-with-null-parent-keys [string][yes|no|true|false]: Indicates whether or not to trigger query method when parent-keys filter is null. Default: false
-  'queryWithNullParentKeys: query-with-null-parent-keys'
+  'queryWithNullParentKeys: query-with-null-parent-keys',
+
+  // set-value-on-value-change [string]: Form component attributes whose value will be set when the value of the current component changes due to user interaction. Separated by ';'. Accepted format: attr | columnName:attr
+  'setValueOnValueChange: set-value-on-value-change'
 ];
 
 export const DEFAULT_OUTPUTS_O_FORM_SERVICE_COMPONENT = [
-  ...DEFAULT_OUTPUTS_O_FORM_DATA_COMPONENT
+  ...DEFAULT_OUTPUTS_O_FORM_DATA_COMPONENT,
+  'onSetValueOnValueChange'
 ];
-
 
 export class OFormServiceComponent extends OFormDataComponent {
 
@@ -72,6 +77,10 @@ export class OFormServiceComponent extends OFormDataComponent {
   protected serviceType: string;
   @InputConverter()
   queryWithNullParentKeys: boolean = false;
+  public setValueOnValueChange: string;
+
+  /* Outputs */
+  public onSetValueOnValueChange: EventEmitter<Object> = new EventEmitter<Object>();
 
   /* Internal variables */
   protected dataArray: any[] = [];
@@ -79,14 +88,20 @@ export class OFormServiceComponent extends OFormDataComponent {
   protected visibleColArray: string[] = [];
   protected descriptionColArray: string[] = [];
   protected dataService: OntimizeService;
+  public loaderSubscription: Subscription;
+  loading: boolean = false;
+
   protected querySuscription: Subscription;
   protected cacheQueried: boolean = false;
   protected _pKeysEquiv = {};
+  protected _setValueOnValueChangeEquiv = {};
   protected _formDataSubcribe;
   protected _currentIndex;
   protected dialogService: DialogService;
 
   protected queryOnEventSubscription: Subscription;
+  public delayLoad = 250;
+  public loadingSubject = new BehaviorSubject<boolean>(false);
 
   constructor(
     form: OFormComponent,
@@ -107,7 +122,7 @@ export class OFormServiceComponent extends OFormDataComponent {
 
     this.visibleColArray = Util.parseArray(this.visibleColumns, true);
     if (Util.isArrayEmpty(this.visibleColArray)) {
-      //It is necessary to assing value to visibleColumns to propagate the parameter.
+      // It is necessary to assing value to visibleColumns to propagate the parameter.
       this.visibleColumns = this.columns;
       this.visibleColArray = this.colArray;
     }
@@ -120,13 +135,12 @@ export class OFormServiceComponent extends OFormDataComponent {
     let pkArray = Util.parseArray(this.parentKeys);
     this._pKeysEquiv = Util.parseParentKeysEquivalences(pkArray);
 
-    if (this.form) {
+    let setValueSetArray = Util.parseArray(this.setValueOnValueChange);
+    this._setValueOnValueChangeEquiv = Util.parseParentKeysEquivalences(setValueSetArray);
+
+    if (this.form && this.queryOnBind) {
       const self = this;
-      if (self.queryOnBind) {
-        this._formDataSubcribe = this.form.onDataLoaded.subscribe(data => {
-          self.queryData();
-        });
-      }
+      this._formDataSubcribe = this.form.onDataLoaded.subscribe(() => self.queryData());
     }
 
     if (this.staticData) {
@@ -154,6 +168,28 @@ export class OFormServiceComponent extends OFormDataComponent {
     }
     if (this.queryOnEventSubscription) {
       this.queryOnEventSubscription.unsubscribe();
+    }
+    if (this.loaderSubscription) {
+      this.loaderSubscription.unsubscribe();
+    }
+  }
+
+  protected emitOnValueChange(type, newValue, oldValue) {
+    super.emitOnValueChange(type, newValue, oldValue);
+    // Set value for 'set-value-on-value-change' components
+    let record = this.getSelectedRecord();
+    this.onSetValueOnValueChange.emit(record);
+    let setValueSetKeys = Object.keys(this._setValueOnValueChangeEquiv);
+    if (setValueSetKeys.length) {
+      let formComponents = this.form.getComponents();
+      if (Util.isDefined(record)) {
+        setValueSetKeys.forEach(key => {
+          let comp = formComponents[this._setValueOnValueChangeEquiv[key]];
+          if (Util.isDefined(comp)) {
+            comp.setValue(record[key]);
+          }
+        });
+      }
     }
   }
 
@@ -199,7 +235,13 @@ export class OFormServiceComponent extends OFormDataComponent {
       if (this.querySuscription) {
         this.querySuscription.unsubscribe();
       }
+      if (this.loaderSubscription) {
+        this.loaderSubscription.unsubscribe();
+      }
+
       const queryCols = this.getAttributesValuesToQuery();
+
+      this.loaderSubscription = this.load();
       this.querySuscription = this.dataService[this.queryMethod](filter, queryCols, this.entity).subscribe(resp => {
         if (resp.code === Codes.ONTIMIZE_SUCCESSFUL_CODE) {
           self.cacheQueried = true;
@@ -207,8 +249,14 @@ export class OFormServiceComponent extends OFormDataComponent {
         } else {
           console.log('error');
         }
+
+        //window.setTimeout(() => { this.loading = false; self.loadingSubject.next(false); self.loaderSubscription.unsubscribe(); }, 10000);
+        self.loadingSubject.next(false);
+        self.loaderSubscription.unsubscribe();
       }, err => {
         console.log(err);
+        self.loadingSubject.next(false);
+        self.loaderSubscription.unsubscribe();
         if (err && !Util.isObject(err)) {
           this.dialogService.alert('ERROR', err);
         } else {
@@ -225,7 +273,7 @@ export class OFormServiceComponent extends OFormDataComponent {
   setDataArray(data: any): void {
     if (Util.isArray(data)) {
       this.dataArray = data;
-      this.syncDataIndex();
+      this.syncDataIndex(false);
     } else if (Util.isObject(data) && Object.keys(data).length > 0) {
       this.dataArray = [data];
     } else {
@@ -234,39 +282,33 @@ export class OFormServiceComponent extends OFormDataComponent {
     }
   }
 
-  syncDataIndex() {
+  syncDataIndex(queryIfNotFound: boolean = true) {
     this._currentIndex = undefined;
-    if (!Util.isDefined(this.value) || !Util.isDefined(this.value.value)) {
-      return;
-    }
-    if (!this.dataArray) {
-      return;
-    }
-    const self = this;
-    if (this.value.value instanceof Array) {
-      const valueArray = (self.value.value as Array<any>);
-      this._currentIndex = [];
-      this.dataArray.forEach((item) => {
-        const filtered = valueArray.filter((valueItem) => item[self.valueColumn] === valueItem);
-        filtered.forEach(filteredItem => self._currentIndex.push(filteredItem));
-      });
-    } else {
+    if (this.value && this.value.value && this.dataArray) {
+      const self = this;
       this.dataArray.forEach((item, index) => {
-        if (item[self.valueColumn] === self.value.value) {
+        if (this.value.value instanceof Array) {
+          this._currentIndex = [];
+          this.value.value.forEach((itemValue, indexValue) => {
+            if (item[self.valueColumn] === itemValue) {
+              this._currentIndex[this._currentIndex.length] = indexValue;
+            }
+          });
+        } else if (item[self.valueColumn] === this.value.value) {
+          self._currentIndex = index;
+        }
+        if (item[self.valueColumn] === this.value.value) {
           self._currentIndex = index;
         }
       });
-    }
-    this.queryDataIfNeeded();
-  }
 
-  protected queryDataIfNeeded() {
-    if (Util.isDefined(this._currentIndex)) {
-      return;
-    }
-    if (this.queryOnBind && this.dataArray && this.dataArray.length === 0
-      && !this.cacheQueried && !this.isEmpty()) {
-      this.queryData();
+      if (this._currentIndex === undefined && queryIfNotFound) {
+        if (this.queryOnBind && this.dataArray && this.dataArray.length === 0
+          && !this.cacheQueried && !this.isEmpty()) {
+          this.queryData();
+        }
+        return;
+      }
     }
   }
 
@@ -299,6 +341,33 @@ export class OFormServiceComponent extends OFormDataComponent {
       result = this.getDataArray().find(item => item[this.valueColumn] === selectedValue);
     }
     return result;
+  }
+
+  load(): any {
+
+    var self = this;
+    var zone = this.injector.get(NgZone);
+    var loadObservable = new Observable(observer => {
+      var timer = window.setTimeout(() => {
+        observer.next(true);
+      }, self.delayLoad);
+
+      return () => {
+        window.clearTimeout(timer);
+        zone.run(() => {
+          observer.next(false);
+          self.loading = false;
+        });
+      };
+
+    });
+    var subscription = loadObservable.subscribe(val => {
+      zone.run(() => {
+        self.loading = val as boolean;
+        self.loadingSubject.next(val as boolean);
+      });
+    });
+    return subscription;
   }
 
 }

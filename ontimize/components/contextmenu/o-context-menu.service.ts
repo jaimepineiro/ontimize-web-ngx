@@ -1,11 +1,11 @@
-import { ComponentRef, ElementRef, Injectable } from '@angular/core';
+import { ComponentRef, ElementRef, Injectable, QueryList } from '@angular/core';
 import { Overlay, OverlayRef, ScrollStrategyOptions } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { Subscription, Subject } from 'rxjs';
+import { Subscription, Subject, fromEvent } from 'rxjs';
 
 import { OContextMenuComponent } from './o-context-menu.component';
-import { OContextMenuContentComponent } from './content/o-context-menu-content.component';
-import { OContextMenuItemComponent } from './item/o-context-menu-item.component';
+import { OComponentMenuItems } from './o-content-menu.class';
+import { OContextMenuContentComponent } from './context-menu/o-context-menu-content.component';
 
 export interface IOContextMenuClickEvent {
   anchorElement?: ElementRef;
@@ -15,7 +15,8 @@ export interface IOContextMenuClickEvent {
 }
 
 export interface IOContextMenuContext extends IOContextMenuClickEvent {
-  menuItems?: OContextMenuItemComponent[];
+  menuItems?: QueryList<OComponentMenuItems>;
+  class?: string;
 }
 
 @Injectable()
@@ -23,6 +24,8 @@ export class OContextMenuService {
 
   public showContextMenu: Subject<IOContextMenuClickEvent> = new Subject<IOContextMenuClickEvent>();
   public closeContextMenu: Subject<Event> = new Subject();
+  activeMenu: OContextMenuContentComponent;
+  backDropSub: Subscription;
 
   protected overlays: Array<OverlayRef> = [];
   protected fakeElement: any = {
@@ -42,6 +45,7 @@ export class OContextMenuService {
   ) { }
 
   public openContextMenu(context: IOContextMenuContext): void {
+    this.closeContext();
     this.createOverlay(context);
   }
 
@@ -53,10 +57,16 @@ export class OContextMenuService {
       });
     }
     this.overlays = [];
+
+    if (this.activeMenu) {
+      this.activeMenu.close();
+    }
   }
 
   protected createOverlay(context: IOContextMenuContext): void {
-    // TODO: submenu
+    context.event.preventDefault();
+    context.event.stopPropagation();
+
     this.fakeElement.getBoundingClientRect = (): ClientRect => ({
       bottom: context.event.clientY,
       height: 0,
@@ -75,25 +85,40 @@ export class OContextMenuService {
         originY: 'bottom'
       }]);
 
-    this.overlays = [this.overlay.create({
+    let overlayRef = this.overlay.create({
       positionStrategy,
+      hasBackdrop: false,
       panelClass: ['o-context-menu'],
       scrollStrategy: this.scrollStrategy.close()
-    })];
+    });
+
+    this.overlays = [overlayRef];
+
     this.attachContextMenu(this.overlays[0], context);
   }
 
   protected attachContextMenu(overlay: OverlayRef, context: IOContextMenuContext): void {
-    const contextMenuContent: ComponentRef<OContextMenuContentComponent> = overlay.attach(new ComponentPortal(OContextMenuContentComponent));
+    const contextMenuContent: ComponentRef<any> = overlay.attach(new ComponentPortal(OContextMenuContentComponent));
     contextMenuContent.instance.overlay = overlay;
     contextMenuContent.instance.menuItems = context.menuItems;
     contextMenuContent.instance.data = context.data;
+    contextMenuContent.instance.menuClass = context.class;
+    this.registerBackdropEvents(overlay);
+  }
 
-    const subscriptions: Subscription = new Subscription();
-    subscriptions.add(contextMenuContent.instance.execute.asObservable().subscribe(() => this.closeContext()));
-    subscriptions.add(contextMenuContent.instance.close.asObservable().subscribe(() => this.closeContext()));
+  private registerBackdropEvents(overlayRef: OverlayRef) {
+    const elm = overlayRef.backdropElement;
+    if (elm) {
+      this.backDropSub = fromEvent(elm, 'mousedown')
+        .subscribe(this.closeContext.bind(this));
+    }
+  }
 
-    contextMenuContent.onDestroy(() => context.menuItems.forEach(menuItem => menuItem.isActive = false));
+  destroy() {
+    this.closeContext();
+    if (this.backDropSub) {
+      this.backDropSub.unsubscribe();
+    }
   }
 
 }

@@ -1,6 +1,7 @@
 import { Injector } from '@angular/core';
-import { InputConverter, BooleanConverter } from '../decorators';
-import { OTranslateService, PermissionsService, OPermissions } from '../services';
+import { BooleanConverter } from '../decorators';
+import { OTranslateService, OPermissions } from '../services';
+import { PermissionsUtils } from '../util/permissions';
 import { Util } from '../utils';
 
 export interface IComponent {
@@ -10,11 +11,11 @@ export interface IComponent {
 export class OBaseComponent implements IComponent {
   /* Inputs */
   protected oattr: string;
-  protected olabel: string;
+  protected _olabel: string;
+  protected oplaceholder: string;
   protected _oenabled: boolean = true;
   protected _readOnly: boolean;
-  @InputConverter()
-  protected orequired: boolean = false;
+  protected _orequired: boolean = false;
 
   /* Internal variables */
   protected injector: Injector;
@@ -22,10 +23,10 @@ export class OBaseComponent implements IComponent {
 
   protected _disabled: boolean;
   protected _isReadOnly: boolean;
-  protected _placeholder: string;
   protected _tooltip: string;
   protected _tooltipPosition: string = 'below';
   protected _tooltipShowDelay: number = 500;
+  protected _tooltipHideDelay: number = 0;
   protected permissions: OPermissions;
 
   constructor(injector: Injector) {
@@ -37,7 +38,13 @@ export class OBaseComponent implements IComponent {
 
   initialize() {
     this._disabled = !this.oenabled;
-    this._placeholder = (this.olabel !== undefined) ? this.olabel : this.oattr;
+    if (!Util.isDefined(this._olabel)) {
+      this._olabel = this.oattr;
+    }
+    this._olabel = this.translateService.get(this._olabel);
+    if (Util.isDefined(this.oplaceholder) && this.oplaceholder.length > 0) {
+      this.oplaceholder = this.translateService.get(this.oplaceholder);
+    }
   }
 
   getAttribute(): string {
@@ -48,17 +55,26 @@ export class OBaseComponent implements IComponent {
   }
 
   get placeHolder(): string {
-    if (Util.isDefined(this._placeholder) && this.translateService) {
-      return this.translateService.get(this._placeholder);
-    }
-    return this._placeholder;
+    return this.oplaceholder;
   }
 
   set placeHolder(value: string) {
-    this._placeholder = value;
+    this.oplaceholder = value;
+  }
+
+  get tooltipClass(): string {
+    return this.getTooltipClass();
+  }
+
+  protected getTooltipClass(): string {
+    return `o-tooltip ${this.tooltipPosition}`;
   }
 
   get tooltip(): string {
+    return this.getTooltipText();
+  }
+
+  protected getTooltipText(): string {
     if (Util.isDefined(this._tooltip) && this.translateService) {
       return this.translateService.get(this._tooltip);
     }
@@ -85,6 +101,14 @@ export class OBaseComponent implements IComponent {
     this._tooltipShowDelay = value;
   }
 
+  get tooltipHideDelay(): number {
+    return this._tooltipHideDelay;
+  }
+
+  set tooltipHideDelay(value: number) {
+    this._tooltipHideDelay = value;
+  }
+
   get isReadOnly(): boolean {
     return this._isReadOnly;
   }
@@ -102,7 +126,7 @@ export class OBaseComponent implements IComponent {
       this._isReadOnly = false;
       return;
     }
-    if (!PermissionsService.checkEnabledPermission(this.permissions)) {
+    if (!PermissionsUtils.checkEnabledPermission(this.permissions)) {
       return;
     }
     this._isReadOnly = value;
@@ -113,7 +137,7 @@ export class OBaseComponent implements IComponent {
   }
 
   set readOnly(value: any) {
-    if (!PermissionsService.checkEnabledPermission(this.permissions)) {
+    if (!PermissionsUtils.checkEnabledPermission(this.permissions)) {
       return;
     }
     const parsedValue = BooleanConverter(value);
@@ -126,10 +150,18 @@ export class OBaseComponent implements IComponent {
   }
 
   set disabled(value: boolean) {
-    if (!PermissionsService.checkEnabledPermission(this.permissions)) {
+    if (!PermissionsUtils.checkEnabledPermission(this.permissions)) {
       return;
     }
     this._disabled = value;
+  }
+
+  set orequired(val: boolean) {
+    this._orequired = BooleanConverter(val);
+  }
+
+  get orequired(): boolean {
+    return this._orequired;
   }
 
   get isRequired(): boolean {
@@ -137,10 +169,7 @@ export class OBaseComponent implements IComponent {
   }
 
   set required(value: boolean) {
-    var self = this;
-    window.setTimeout(() => {
-      self.orequired = value;
-    }, 0);
+    this.orequired = value;
   }
 
   get oenabled(): any {
@@ -148,11 +177,20 @@ export class OBaseComponent implements IComponent {
   }
 
   set oenabled(value: any) {
-    if (!PermissionsService.checkEnabledPermission(this.permissions)) {
+    if (!PermissionsUtils.checkEnabledPermission(this.permissions)) {
       return;
     }
     const parsedValue = BooleanConverter(value);
     this._oenabled = parsedValue;
     this.disabled = !parsedValue;
   }
+
+  get olabel(): string {
+    return this._olabel;
+  }
+
+  set olabel(value: string) {
+    this._olabel = value;
+  }
+
 }

@@ -1,4 +1,4 @@
-import { Component, OnInit, Inject, Injector, Injectable, forwardRef } from '@angular/core';
+import { Component, OnInit, Inject, Injector, Injectable, forwardRef, ChangeDetectionStrategy } from '@angular/core';
 import { MatPaginatorIntl } from '@angular/material';
 import { OTranslateService } from '../../../../../services';
 import { InputConverter } from '../../../../../decorators';
@@ -14,7 +14,8 @@ export const DEFAULT_PAGINATOR_TABLE = [
   moduleId: module.id,
   selector: 'o-table-paginator',
   template: ' ',
-  inputs: DEFAULT_PAGINATOR_TABLE
+  inputs: DEFAULT_PAGINATOR_TABLE,
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class OTablePaginatorComponent implements OnInit {
 
@@ -122,6 +123,7 @@ export class OTableMatPaginatorIntl extends MatPaginatorIntl {
       this.firstPageLabel = this.translateService.get('TABLE.PAGINATE.FIRST');
       this.lastPageLabel = this.translateService.get('TABLE.PAGINATE.LAST');
       this.getRangeLabel = this.getORangeLabel;
+      this.changes.next();
     });
   }
 

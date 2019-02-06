@@ -1,76 +1,76 @@
-import { HttpClientModule, HttpClient } from '@angular/common/http';
-import { TranslateModule, TranslateLoader, TranslateParser } from '@ngx-translate/core';
+
+import { HttpClient, HttpClientModule } from '@angular/common/http';
+import { APP_INITIALIZER, Injector, NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { Injector, NgModule, APP_INITIALIZER } from '@angular/core';
+import { DndModule } from '@churchs19/ng2-dnd';
+import { TranslateLoader, TranslateModule, TranslateParser } from '@ngx-translate/core';
 import { NgxMaterialTimepickerModule } from 'ngx-material-timepicker';
 
-import { appInitializerFactory } from './o-providers';
-import { OTranslateService, OTranslateHttpLoader } from '../services';
-import { APP_CONFIG, AppConfig } from '../config/app-config';
-
 import {
-  OBarMenuModule,
   OBarMenuGroupModule,
   OBarMenuItemModule,
-  OLocaleBarMenuItemModule,
-  OBarMenuSeparatorModule,
+  OBarMenuModule,
   OBarMenuNestedModule,
+  OBarMenuSeparatorModule,
   OBreadcrumbModule,
   OButtonModule,
+  OButtonToggleModule,
+  OCardMenuItemModule,
   OCheckboxModule,
-  OComboModule,
+  OColumnCollapsibleModule,
   OColumnModule,
+  OComboModule,
   OContextMenuModule,
-  ORowModule,
-  ODialogModule,
-  OSnackBarModule,
-  OFilterBuilderModule,
-  OFormModule,
-  OFormContainerModule,
-  OImageModule,
   OCurrencyInputModule,
   ODateInputModule,
+  ODialogModule,
   OEmailInputModule,
+  OErrorModule,
   OFileInputModule,
+  OFilterBuilderModule,
+  OFormContainerModule,
+  OFormModule,
+  OGridModule,
+  OHourInputModule,
   OHTMLInputModule,
+  OImageModule,
   OIntegerInputModule,
+  OLanguageSelectorModule,
+  OListItemAvatarModule,
+  OListItemCardImageModule,
+  OListItemCardModule,
+  OListItemModule,
+  OListItemTextModule,
+  OListModule,
   OListPickerModule,
+  OLocaleBarMenuItemModule,
   ONIFInputModule,
   OPasswordInputModule,
   OPercentInputModule,
+  ORadioModule,
   ORealInputModule,
-  OTextInputModule,
-  OTextareaInputModule,
-  OValidatorModule,
-  OErrorModule,
-  OListModule,
-  OListItemModule,
-  OListItemAvatarModule,
-  OListItemTextModule,
-  OListItemCardModule,
-  OListItemCardImageModule,
+  ORowCollapsibleModule,
+  ORowModule,
   OSearchInputModule,
+  OSliderModule,
+  OSlideToggleModule,
+  OSnackBarModule,
   OTableModule,
-  OUserInfoModule,
-  OLanguageSelectorModule,
-  OCardMenuItemModule,
-  OHourInputModule,
+  OTextareaInputModule,
+  OTextInputModule,
   OTimeInputModule,
-  OGridModule,
-  ORadioModule
+  OUserInfoModule,
+  OValidatorModule,
 } from '../components';
-
-import {
-  OAppLayoutModule,
-  OFormLayoutManagerModule,
-  OCardMenuLayoutModule
-} from '../layouts';
-
-import { OSharedModule } from '../shared';
+import { APP_CONFIG, AppConfig } from '../config/app-config';
+import { OAppLayoutModule, OCardMenuLayoutModule, OFormLayoutManagerModule } from '../layouts';
+import { OTranslateHttpLoader, OTranslateService } from '../services';
+import { OPermissionsModule } from '../services/permissions/o-permissions.module';
 import { OTranslateParser } from '../services/translate/o-translate.parser';
+import { OSharedModule } from '../shared';
 import { Util } from '../utils';
-import { DndModule } from '@churchs19/ng2-dnd';
+import { appInitializerFactory } from './o-providers';
 
 export const INTERNAL_ONTIMIZE_MODULES_EXPORTED: any = [
   // Standard modules
@@ -86,11 +86,14 @@ export const INTERNAL_ONTIMIZE_MODULES_EXPORTED: any = [
   OBarMenuNestedModule,
   OBreadcrumbModule,
   OButtonModule,
+  OButtonToggleModule,
   OCheckboxModule,
   OComboModule,
   OColumnModule,
+  OColumnCollapsibleModule,
   OContextMenuModule,
   ORowModule,
+  ORowCollapsibleModule,
   ODialogModule,
   OSnackBarModule,
   OFilterBuilderModule,
@@ -129,7 +132,9 @@ export const INTERNAL_ONTIMIZE_MODULES_EXPORTED: any = [
   OHourInputModule,
   OTimeInputModule,
   OGridModule,
-  ORadioModule
+  ORadioModule,
+  OSlideToggleModule,
+  OSliderModule
 ];
 
 // AoT requires an exported function for factories
@@ -180,11 +185,14 @@ export const INTERNAL_ONTIMIZE_MODULES: any = [
   OBarMenuNestedModule,
   OBreadcrumbModule,
   OButtonModule,
+  OButtonToggleModule,
   OCheckboxModule,
   OComboModule,
   OColumnModule,
+  OColumnCollapsibleModule,
   OContextMenuModule,
   ORowModule,
+  ORowCollapsibleModule,
   ODialogModule,
   OSnackBarModule,
   OFilterBuilderModule,
@@ -223,7 +231,8 @@ export const INTERNAL_ONTIMIZE_MODULES: any = [
   OHourInputModule,
   OTimeInputModule,
   OGridModule,
-  ORadioModule
+  ORadioModule,
+  OSlideToggleModule
 ];
 
 @NgModule({
@@ -239,5 +248,6 @@ export class OntimizeWebTranslateModule { }
 export const ONTIMIZE_MODULES: any = [
   BrowserModule,
   BrowserAnimationsModule,
-  OntimizeWebTranslateModule
+  OntimizeWebTranslateModule,
+  OPermissionsModule
 ];

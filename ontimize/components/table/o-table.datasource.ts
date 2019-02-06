@@ -276,7 +276,7 @@ export class OTableDataSource extends DataSource<any> {
     return this._database.data;
   }
 
-  /** Return data of the visible columns of the table  without rendering */
+  /** Return data of the visible columns of the table without rendering */
   getCurrentData(): any[] {
     return this.getData();
   }
@@ -287,7 +287,7 @@ export class OTableDataSource extends DataSource<any> {
 
   /** Return data of the visible columns of the table  rendering */
   getCurrentRendererData(): any[] {
-    return this.getData(true);
+    return this.getRenderedData(this.renderedData);
   }
 
   /** Return sql types of the current data */
@@ -295,17 +295,20 @@ export class OTableDataSource extends DataSource<any> {
     return this._database.sqlTypes;
   }
 
-  protected getData(render?: boolean) {
-    let self = this;
+  protected getData() {
+    return this.renderedData;
+  }
 
-    return this.renderedData.map(function (row, i, a) {
+  public getRenderedData(data) {
+    let self = this;
+    return data.map(function (row, i, a) {
       /** render each column*/
       var obj = {};
       Object.keys(row).forEach(function (column, i, a) {
         self._tableOptions.columns.forEach(function (ocolumn: OColumn, i, a) {
           if (column === ocolumn.attr && ocolumn.visible) {
             var key = column;
-            if (render && ocolumn.renderer && ocolumn.renderer.getCellData) {
+            if (ocolumn.renderer && ocolumn.renderer.getCellData) {
               obj[key] = ocolumn.renderer.getCellData(row[column], row);
             } else {
               obj[key] = row[column];
@@ -316,6 +319,7 @@ export class OTableDataSource extends DataSource<any> {
       return obj;
     });
   }
+
 
   protected getAllData(render?: boolean) {
     let self = this;
@@ -358,6 +362,9 @@ export class OTableDataSource extends DataSource<any> {
     filters.forEach(filter => {
       this.columnValueFilters.push(filter);
     });
+    if (!this.table.pageable) {
+      this._columnValueFilterChange.next();
+    }
   }
 
   isColumnValueFilterActive(): boolean {
@@ -434,7 +441,6 @@ export class OTableDataSource extends DataSource<any> {
   }
 
   getAggregateData(column: OColumn) {
-
     var obj = {};
     var totalValue = '';
 
@@ -509,9 +515,26 @@ export class OTableDataSource extends DataSource<any> {
     return Math.max(...tempMin);
   }
 
-
   protected existsAnyCalculatedColumn(): boolean {
     return this._tableOptions.columns.find((oCol: OColumn) => oCol.calculate !== undefined) !== undefined;
+  }
+
+  updateRenderedRowData(rowData: any) {
+    const tableKeys = this.table.getKeys();
+    let record = this.renderedData.find((data: any) => {
+      let found = true;
+      for (let i = 0, len = tableKeys.length; i < len; i++) {
+        const key = tableKeys[i];
+        if (data[key] !== rowData[key]) {
+          found = false;
+          break;
+        }
+      }
+      return found;
+    });
+    if (Util.isDefined(record)) {
+      Object.assign(record, rowData);
+    }
   }
 }
 

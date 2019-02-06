@@ -1,8 +1,11 @@
-import { Component, OnInit, Inject, forwardRef, EventEmitter, Injector, ViewEncapsulation } from '@angular/core';
+import { Component, OnInit, Inject, forwardRef, EventEmitter, Injector, ViewEncapsulation, ElementRef, ChangeDetectionStrategy } from '@angular/core';
 import { Util, Codes } from '../../../../../utils';
+import { InputConverter } from '../../../../../decorators';
 import { OTableComponent } from '../../../o-table.component';
 
 export const DEFAULT_INPUTS_O_TABLE_BUTTON = [
+  'oattr: attr',
+  'enabled',
   'icon',
   'svgIcon: svg-icon',
   'iconPosition: icon-position',
@@ -21,6 +24,7 @@ export const DEFAULT_OUTPUTS_O_TABLE_BUTTON = [
   inputs: DEFAULT_INPUTS_O_TABLE_BUTTON,
   outputs: DEFAULT_OUTPUTS_O_TABLE_BUTTON,
   encapsulation: ViewEncapsulation.None,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.o-table-button]': 'true',
   }
@@ -31,15 +35,19 @@ export class OTableButtonComponent implements OnInit {
   public static DEFAULT_INPUTS_O_TABLE_BUTTON = DEFAULT_INPUTS_O_TABLE_BUTTON;
   public static DEFAULT_OUTPUTS_O_TABLE_BUTTON = DEFAULT_OUTPUTS_O_TABLE_BUTTON;
 
-  public onClick: EventEmitter<Object> = new EventEmitter<Object>();
+  onClick: EventEmitter<Object> = new EventEmitter<Object>();
 
-  public icon: string;
-  public svgIcon: string;
-  public olabel: string;
-  public iconPosition: string;
+  oattr: string;
+  @InputConverter()
+  enabled: boolean = true;
+  icon: string;
+  svgIcon: string;
+  olabel: string;
+  iconPosition: string;
 
   constructor(
     protected injector: Injector,
+    public elRef: ElementRef,
     @Inject(forwardRef(() => OTableComponent)) protected _table: OTableComponent
   ) {
 

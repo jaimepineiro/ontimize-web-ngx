@@ -1,11 +1,12 @@
-import { Component, Injector, ViewChild, TemplateRef, OnInit, ElementRef, ViewEncapsulation } from '@angular/core';
+import { Component, Injector, ViewChild, TemplateRef, OnInit, ElementRef, ViewEncapsulation, ChangeDetectionStrategy } from '@angular/core';
 import { DateAdapter, MatDatepicker, MatDatepickerInputEvent, MAT_DATE_LOCALE } from '@angular/material';
 import moment from 'moment';
 
+import { Util } from '../../../../../utils';
 import { OntimizeMomentDateAdapter } from '../../../../../shared';
 import { InputConverter } from '../../../../../decorators';
 import { MomentService } from '../../../../../services';
-import { DateFilterFunction } from '../../../../input/date-input/o-date-input.component';
+import { DateFilterFunction, ODateValueType, ODateInputComponent } from '../../../../input/date-input/o-date-input.component';
 import { OBaseTableCellEditor } from '../o-base-table-cell-editor.class';
 
 export const DEFAULT_INPUTS_O_TABLE_CELL_EDITOR_DATE = [
@@ -17,7 +18,11 @@ export const DEFAULT_INPUTS_O_TABLE_CELL_EDITOR_DATE = [
   'max',
   'oTouchUi: touch-ui',
   'startAt: start-at',
-  'filterDate: filter-date'
+  'filterDate: filter-date',
+  // value-type [timestamp|string]: type must be defined to be able to save its value,
+  // e.g. classic ontimize server dates come as timestamps (number), but to be able to save them they have to be send as strings with
+  // the format 'YYYY-MM-DD HH:mm:ss'Default: timestamp.
+  'dateValueType: date-value-type'
 ];
 
 export const DEFAULT_OUTPUTS_O_TABLE_CELL_EDITOR_DATE = [
@@ -32,6 +37,7 @@ export const DEFAULT_OUTPUTS_O_TABLE_CELL_EDITOR_DATE = [
   inputs: DEFAULT_INPUTS_O_TABLE_CELL_EDITOR_DATE,
   outputs: DEFAULT_OUTPUTS_O_TABLE_CELL_EDITOR_DATE,
   encapsulation: ViewEncapsulation.None,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
     { provide: DateAdapter, useClass: OntimizeMomentDateAdapter, deps: [MAT_DATE_LOCALE] }
   ]
@@ -54,6 +60,7 @@ export class OTableCellEditorDateComponent extends OBaseTableCellEditor implemen
   oTouchUi: boolean = false;
   protected startAt: string;
   filterDate: DateFilterFunction;
+  _dateValueType: ODateValueType = 'timestamp';
 
   oStartAt: Date;
   oMinDate: Date;
@@ -126,27 +133,88 @@ export class OTableCellEditorDateComponent extends OBaseTableCellEditor implemen
 
   getCellData(): any {
     let value = super.getCellData();
-    if (typeof value !== 'undefined') {
-      if (typeof value === 'number') {
-        let dateObj = new Date(value);
-        return dateObj;
+    if (Util.isDefined(value)) {
+      let result = value;
+      let m;
+      switch (this.dateValueType) {
+        case 'string':
+          m = moment(value, this.format);
+          break;
+        case 'date':
+          break;
+        case 'iso-8601':
+        case 'timestamp':
+        default:
+          m = moment(value);
+          break;
       }
+      if (Util.isDefined(m)) {
+        result = m.toDate();
+      }
+      return result;
     }
     return value;
   }
 
   commitEdition() {
-    if (!this.datepicker.opened) {
-      super.commitEdition();
+    // !this.datepicker.opened &&
+    if (!this.formControl.invalid) {
+      this.oldValue = this._rowData[this.tableColumnAttr];
+      this._rowData[this.tableColumnAttr] = this.getValueByValyType();
+      if (!this.isSilentControl()) {
+        this.endEdition(true);
+        this.editionCommitted.emit(this._rowData);
+      }
     }
   }
 
+  protected getValueByValyType(): any {
+    let result = this.formControl.value;
+    const m = moment(this.formControl.value);
+    switch (this.dateValueType) {
+      case 'string':
+        result = m.format(this.format);
+        break;
+      case 'date':
+        result = new Date(result);
+        break;
+      case 'iso-8601':
+        result = m.toISOString();
+        break;
+      case 'timestamp':
+      default:
+        result = m.valueOf();
+        break;
+    }
+    return result;
+  }
+
   onDateChange(event: MatDatepickerInputEvent<any>) {
-    super.commitEdition();
+    var isValid = event.value && event.value.isValid && event.value.isValid();
+    if (isValid) {
+      var dateVal = new Date(event.value.valueOf());
+      this.formControl.setValue(dateVal, {
+        emitModelToViewChange: false,
+        emitEvent: false
+      });
+      this.commitEdition();
+    }
   }
 
   openDatepicker(d: MatDatepicker<Date>) {
     this.datepicker = d;
     d.open();
+  }
+
+  set dateValueType(val: any) {
+    this._dateValueType = ODateInputComponent.convertToODateValueType(val);
+  }
+
+  get dateValueType(): any {
+    return this._dateValueType;
+  }
+
+  onClosed() {
+    this.inputRef.nativeElement.focus();
   }
 }

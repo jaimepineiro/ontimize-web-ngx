@@ -1,35 +1,26 @@
-import {
-  Component,
-  ElementRef,
-  EventEmitter,
-  forwardRef,
-  Inject,
-  Injector,
-  NgModule,
-  OnInit,
-  Optional,
-  ViewChild
-} from '@angular/core';
+import { Component, ElementRef, EventEmitter, forwardRef, Inject, Injector, NgModule, OnInit, Optional, ViewChild } from '@angular/core';
 import { FormControl } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { ValidatorFn, ValidationErrors } from '@angular/forms';
+import { ValidationErrors, ValidatorFn } from '@angular/forms';
 
 import { OSharedModule } from '../../../shared';
 import { InputConverter } from '../../../decorators';
 import { OntimizeFileService } from '../../../services';
 import { OFormComponent } from '../../form/o-form.component';
-import { OFormDataComponent, OValueChangeEvent } from '../../o-form-data-component.class';
+import { OFormDataComponent, OValueChangeEvent, DEFAULT_INPUTS_O_FORM_DATA_COMPONENT } from '../../o-form-data-component.class';
 
 import { OFileItem } from './o-file-item.class';
 import { OFileUploader } from './o-file-uploader.class';
-import { OFormServiceComponent } from '../o-form-service-component.class';
 
 export const DEFAULT_INPUTS_O_FILE_INPUT = [
   'oattr: attr',
   'olabel: label',
+  'floatLabel: float-label',
+  'oplaceholder: placeholder',
   'tooltip',
   'tooltipPosition: tooltip-position',
   'tooltipShowDelay: tooltip-show-delay',
+  'tooltipHideDelay: tooltip-hide-delay',
   'oenabled: enabled',
   'orequired: required',
   'service',
@@ -59,11 +50,12 @@ export const DEFAULT_INPUTS_O_FILE_INPUT = [
   'splitUpload: split-upload',
 
   // additional-data [JSON]: used to send aditional information in the upload request.
-  'additionalData: additional-data'
+  'additionalData: additional-data',
+  'appearance'
 ];
 
 export const DEFAULT_OUTPUTS_O_FILE_INPUT = [
-  ...OFormServiceComponent.DEFAULT_OUTPUTS_O_FORM_SERVICE_COMPONENT,
+  ...DEFAULT_INPUTS_O_FORM_DATA_COMPONENT,
   'onBeforeUpload',
   'onBeforeUploadFile',
   'onProgress',
@@ -324,8 +316,7 @@ export class OFileInputComponent extends OFormDataComponent implements OnInit {
 
 @NgModule({
   declarations: [OFileInputComponent],
-  imports: [OSharedModule, CommonModule],
+  imports: [CommonModule, OSharedModule],
   exports: [OFileInputComponent]
 })
-export class OFileInputModule {
-}
+export class OFileInputModule { }

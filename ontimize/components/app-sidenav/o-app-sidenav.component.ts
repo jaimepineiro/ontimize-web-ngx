@@ -2,7 +2,7 @@ import { AfterViewInit, ChangeDetectorRef, ChangeDetectionStrategy, Component, E
 import { CommonModule } from '@angular/common';
 import { MatSidenav } from '@angular/material';
 import { Router, RouterModule } from '@angular/router';
-import { MediaChange, ObservableMedia } from '@angular/flex-layout';
+import { MediaChange, MediaObserver } from '@angular/flex-layout';
 import { Subscription } from 'rxjs';
 
 import { Util } from '../../util/util';
@@ -75,13 +75,13 @@ export class OAppSidenavComponent implements OnInit, OnDestroy, AfterViewInit {
     protected router: Router,
     protected elRef: ElementRef,
     protected cd: ChangeDetectorRef,
-    protected media: ObservableMedia
+    protected media: MediaObserver
   ) {
     this.appMenuService = this.injector.get(AppMenuService);
     this.menuRootArray = this.appMenuService.getMenuRoots();
     this.oUserInfoService = this.injector.get(OUserInfoService);
     const self = this;
-    this.mediaWatch = this.media.subscribe((change: MediaChange) => {
+    this.mediaWatch = this.media.media$.subscribe((change: MediaChange) => {
       if (self.isScreenSmall() && self.sidenav) {
         self.sidenav.close();
       }

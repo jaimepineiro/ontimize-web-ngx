@@ -1,12 +1,12 @@
-import { Component, NgModule, OnInit, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormControl, ValidatorFn, ValidationErrors } from '@angular/forms';
+import { Component, ElementRef, forwardRef, Inject, Injector, NgModule, OnInit, Optional, ViewEncapsulation } from '@angular/core';
+import { FormControl, ValidationErrors, ValidatorFn } from '@angular/forms';
 
-import { Util } from '../../../util/util';
-import { OSharedModule } from '../../../shared';
-import { OFormValue } from '../../form/OFormValue';
 import { InputConverter } from '../../../decorators';
-import { ORealPipe, IRealPipeArgument } from '../../../pipes';
+import { IRealPipeArgument, ORealPipe } from '../../../pipes';
+import { OSharedModule } from '../../../shared';
+import { Util } from '../../../util/util';
+import { OFormComponent } from '../../form/form-components';
 import { DEFAULT_INPUTS_O_INTEGER_INPUT, DEFAULT_OUTPUTS_O_INTEGER_INPUT, OIntegerInputComponent, OIntegerInputModule } from '../integer-input/o-integer-input.component';
 
 export const DEFAULT_INPUTS_O_REAL_INPUT = [
@@ -49,11 +49,20 @@ export class ORealInputComponent extends OIntegerInputComponent implements OnIni
   protected decimalSeparator: string;
   protected pipeArguments: IRealPipeArgument;
 
-  setComponentPipe() {
+  constructor(
+    @Optional() @Inject(forwardRef(() => OFormComponent)) form: OFormComponent,
+    elRef: ElementRef,
+    injector: Injector
+  ) {
+    super(form, elRef, injector);
+    this._defaultSQLTypeKey = 'FLOAT';
+  }
+
+  setComponentPipe(): void {
     this.componentPipe = new ORealPipe(this.injector);
   }
 
-  ngOnInit() {
+  ngOnInit(): void {
     super.ngOnInit();
     this.pipeArguments.decimalSeparator = this.decimalSeparator;
     this.pipeArguments.minDecimalDigits = this.minDecimalDigits;
@@ -61,16 +70,13 @@ export class ORealInputComponent extends OIntegerInputComponent implements OnIni
   }
 
   resolveValidators(): ValidatorFn[] {
-    let validators: ValidatorFn[] = super.resolveValidators();
-
-    if (typeof (this.minDecimalDigits) !== 'undefined') {
+    const validators: ValidatorFn[] = super.resolveValidators();
+    if (Util.isDefined(this.minDecimalDigits)) {
       validators.push(this.minDecimalDigitsValidator.bind(this));
     }
-
-    if (typeof (this.maxDecimalDigits) !== 'undefined') {
+    if (Util.isDefined(this.maxDecimalDigits)) {
       validators.push(this.maxDecimalDigitsValidator.bind(this));
     }
-
     return validators;
   }
 
@@ -80,7 +86,7 @@ export class ORealInputComponent extends OIntegerInputComponent implements OnIni
       ctrlValue = ctrlValue.toString();
     }
     if (ctrlValue && ctrlValue.length) {
-      let valArray = ctrlValue.split(this.decimalSeparator ? this.decimalSeparator : '.');
+      const valArray = ctrlValue.split(this.decimalSeparator ? this.decimalSeparator : '.');
       if (Util.isDefined(this.minDecimalDigits) && (this.minDecimalDigits > 0) && Util.isDefined(valArray[1]) && (valArray[1].length < this.minDecimalDigits)) {
         return {
           minDecimaldigits: {
@@ -98,7 +104,7 @@ export class ORealInputComponent extends OIntegerInputComponent implements OnIni
       ctrlValue = ctrlValue.toString();
     }
     if (ctrlValue && ctrlValue.length) {
-      let valArray = ctrlValue.split(this.decimalSeparator ? this.decimalSeparator : '.');
+      const valArray = ctrlValue.split(this.decimalSeparator ? this.decimalSeparator : '.');
       if (Util.isDefined(this.maxDecimalDigits) && (this.maxDecimalDigits > 0) && Util.isDefined(valArray[1]) && (valArray[1].length > this.maxDecimalDigits)) {
         return {
           maxDecimaldigits: {

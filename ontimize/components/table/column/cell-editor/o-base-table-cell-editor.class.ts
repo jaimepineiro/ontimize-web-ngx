@@ -2,7 +2,7 @@ import { Injector, EventEmitter, OnInit, HostListener } from '@angular/core';
 import { FormControl, ValidatorFn, Validators, FormGroup } from '@angular/forms';
 
 import { InputConverter } from '../../../../decorators';
-import { OTableComponent } from '../../o-table.component';
+import { OTableComponent, OColumn } from '../../o-table.component';
 import { ObservableWrapper, Util } from '../../../../utils';
 import { OTableColumnComponent } from '../o-table-column.component';
 import { OTranslateService, SnackBarService } from '../../../../services';
@@ -14,7 +14,8 @@ export class OBaseTableCellEditor implements OnInit {
     'showPlaceHolder: show-placeholder',
     'olabel: label',
     'updateRecordOnEdit: update-record-on-edit',
-    'showToastOnEdit: show-toast-on-edit'
+    'showNotificationOnEdit: show-notification-on-edit',
+    'enabled'
   ];
 
   public static DEFAULT_OUTPUTS_O_TABLE_CELL_EDITOR = [
@@ -34,7 +35,8 @@ export class OBaseTableCellEditor implements OnInit {
   @InputConverter()
   updateRecordOnEdit: boolean = true;
   @InputConverter()
-  showToastOnEdit: boolean = false;
+  showNotificationOnEdit: boolean = true;
+  protected _enabled: boolean = true;
 
   protected _tableColumn: OTableColumnComponent;
   protected _table: OTableComponent;
@@ -62,6 +64,7 @@ export class OBaseTableCellEditor implements OnInit {
   registerInColumn: boolean = true;
 
   protected snackBarService: SnackBarService;
+  protected oldValue: any;
 
   constructor(protected injector: Injector) {
     this.snackBarService = this.injector.get(SnackBarService);
@@ -91,7 +94,7 @@ export class OBaseTableCellEditor implements OnInit {
       const validators: ValidatorFn[] = this.resolveValidators();
       const cfg = {
         value: undefined,
-        disabled: false
+        disabled: !this.enabled
       };
       this.formControl = new FormControl(cfg, validators);
       this.formGroup.addControl(Math.random().toString(36), this.formControl);
@@ -99,7 +102,7 @@ export class OBaseTableCellEditor implements OnInit {
   }
 
   registerEditor() {
-    if (this.registerInColumn) {
+    if (this.registerInColumn && !Util.isDefined(this.tableColumn.editor)) {
       this.tableColumn.registerEditor(this);
       if (!Util.isDefined(this.type) && Util.isDefined(this.tableColumn.type)) {
         this.type = this.tableColumn.type;
@@ -120,7 +123,7 @@ export class OBaseTableCellEditor implements OnInit {
   }
 
   endEdition(saveChanges) {
-    const oColumn = this.table.getOColumn(this.tableColumnAttr);
+    const oColumn: OColumn = this.table.getOColumn(this.tableColumnAttr);
     if (oColumn) {
       const self = this;
       const updateObserver = this.table.updateCellData(oColumn, this._rowData, saveChanges);
@@ -128,6 +131,8 @@ export class OBaseTableCellEditor implements OnInit {
         updateObserver.subscribe(res => {
           self.onUpdateSuccess(res);
         }, error => {
+          self._rowData[self.tableColumnAttr] = self.oldValue;
+          self.table.dataSource.updateRenderedRowData(self._rowData);
           self.table.showDialogError(error, 'MESSAGES.ERROR_UPDATE');
         });
       }
@@ -136,6 +141,7 @@ export class OBaseTableCellEditor implements OnInit {
 
   commitEdition() {
     if (!this.formControl.invalid) {
+      this.oldValue = this._rowData[this.tableColumnAttr];
       this._rowData[this.tableColumnAttr] = this.formControl.value;
       if (!this.isSilentControl()) {
         this.endEdition(true);
@@ -240,9 +246,19 @@ export class OBaseTableCellEditor implements OnInit {
 
   protected onUpdateSuccess(res: any) {
     ObservableWrapper.callEmit(this.onPostUpdateRecord, res);
-    if (this.showToastOnEdit) {
-      this.snackBarService.open('MESSAGES.INSERTED', { icon: 'check_circle' });
+    if (this.showNotificationOnEdit) {
+      this.snackBarService.open('MESSAGES.UPDATED', { icon: 'check_circle' });
     }
   }
 
+  set enabled(arg: boolean) {
+    this._enabled = arg;
+    if (this.formControl) {
+      this._enabled ? this.formControl.enable() : this.formControl.disable();
+    }
+  }
+
+  get enabled(): boolean {
+    return this._enabled;
+  }
 }

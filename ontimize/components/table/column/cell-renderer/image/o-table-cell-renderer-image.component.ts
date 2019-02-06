@@ -1,4 +1,6 @@
-import { Component, Injector, TemplateRef, ViewChild } from '@angular/core';
+import { Component, Injector, TemplateRef, ViewChild, ChangeDetectionStrategy } from '@angular/core';
+
+import { OColumn } from '../../../o-table.component';
 import { OBaseTableCellRenderer } from '../o-base-table-cell-renderer.class';
 
 export const DEFAULT_INPUTS_O_TABLE_CELL_RENDERER_IMAGE = [
@@ -18,6 +20,7 @@ export const DEFAULT_OUTPUTS_O_TABLE_CELL_RENDERER_IMAGE = [
   moduleId: module.id,
   selector: 'o-table-cell-renderer-image',
   templateUrl: './o-table-cell-renderer-image.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   inputs: DEFAULT_INPUTS_O_TABLE_CELL_RENDERER_IMAGE
 })
 export class OTableCellRendererImageComponent extends OBaseTableCellRenderer {
@@ -40,14 +43,13 @@ export class OTableCellRendererImageComponent extends OBaseTableCellRenderer {
 
   ngOnInit() {
     if (this.table) {
-      const oCol = this.table.getOColumn(this.tableColumn.attr);
+      const oCol: OColumn = this.table.getOColumn(this.tableColumn.attr);
       oCol.title = undefined;
+      oCol.definition.contentAlign = oCol.definition.contentAlign ? oCol.definition.contentAlign : 'center';
     }
   }
 
   getSource(cellData: any) {
-
-    //console.log("sourcde ")
     this._source = '';
     switch (this.imageType) {
       case 'base64':
