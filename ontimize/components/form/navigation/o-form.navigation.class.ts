@@ -1,12 +1,12 @@
 import { EventEmitter, Injector } from '@angular/core';
-import { ActivatedRoute, Router, UrlSegmentGroup, NavigationExtras } from '@angular/router';
-import { Observable, Subscription, combineLatest } from 'rxjs';
-
-import { DialogService, NavigationService, ONavigationItem } from '../../../services';
-import { OFormComponent } from '../o-form.component';
-import { Codes, SQLTypes, Util } from '../../../utils';
-import { OFormLayoutManagerComponent, IDetailComponentData } from '../../../layouts/form-layout/o-form-layout-manager.component';
+import { ActivatedRoute, NavigationExtras, Router, UrlSegmentGroup } from '@angular/router';
+import { combineLatest, Observable, Subscription } from 'rxjs';
 import { OFormLayoutDialogComponent } from '../../../layouts/form-layout/dialog/o-form-layout-dialog.component';
+import { IDetailComponentData, OFormLayoutManagerComponent } from '../../../layouts/form-layout/o-form-layout-manager.component';
+import { DialogService, NavigationService, ONavigationItem } from '../../../services';
+import { Codes, SQLTypes, Util } from '../../../utils';
+import { OFormComponent } from '../o-form.component';
+
 
 export class OFormNavigationClass {
 
@@ -232,16 +232,20 @@ export class OFormNavigationClass {
   updateNavigation() {
     if (this.formLayoutManager) {
       const isInInsertMode = this.form.isInInsertMode();
-      let formData = {};
+      let formData;
       if (isInInsertMode) {
+        formData = {};
         formData['new_tab_title'] = 'LAYOUT_MANANGER.INSERTION_MODE_TITLE';
       } else if (this.formLayoutManager.allowToUpdateNavigation(this.form.oattr)) {
+        formData = {};
         const self = this;
         Object.keys(this.form.formData).forEach(key => {
           formData[key] = self.form.formData[key].value;
         });
       }
-      this.formLayoutManager.updateNavigation(formData, this.id, isInInsertMode);
+      if (formData) {
+        this.formLayoutManager.updateNavigation(formData, this.id, isInInsertMode);
+      }
     }
   }
 

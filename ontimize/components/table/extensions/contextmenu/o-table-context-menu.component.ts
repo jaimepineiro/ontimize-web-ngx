@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, forwardRef, Inject, Injector, OnInit, ViewChild } from '@angular/core';
 import { BehaviorSubject, Subscription } from 'rxjs';
-
+import { InputConverter } from '../../../../decorators/input-converter';
 import { OTranslateService } from '../../../../services';
 import { Util } from '../../../../utils';
 import { OContextMenuComponent } from '../../../contextmenu/o-context-menu-components';
 import { ColumnValueFilterOperator, IColumnValueFilter, OColumn, OTableComponent } from '../../table-components';
+
 
 export const DEFAULT_TABLE_CONTEXT_MENU_INPUTS = [
   'contextMenu: context-menu',
@@ -77,6 +78,7 @@ export class OTableContextMenuComponent implements OnInit {
     return this.isVisibleCopy.getValue();
   }
 
+  @InputConverter()
   set showSelectAll(value: boolean) {
     if (typeof value !== 'boolean') {
       value = Util.parseBoolean(value as any);
@@ -152,7 +154,9 @@ export class OTableContextMenuComponent implements OnInit {
     } else {
       this.defaultContextMenu.oContextMenuItems.reset(itemsParsed);
     }
-
+    if (!Util.isDefined(this.showSelectAll)) {
+      this.isVisibleSelectAll.next(this.table.selectAllCheckbox);
+    }
     this.table.registerContextMenu(this.defaultContextMenu);
   }
 

@@ -3,11 +3,11 @@ import { ObserversModule } from '@angular/cdk/observers';
 import { CdkTableModule } from '@angular/cdk/table';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ContentChildren, ElementRef, EventEmitter, forwardRef, HostListener, Inject, Injector, NgModule, OnDestroy, OnInit, Optional, QueryList, ViewChild, ViewChildren, ViewEncapsulation } from '@angular/core';
-import { MAT_RIPPLE_GLOBAL_OPTIONS, MatCheckboxChange, MatDialog, MatMenu, MatPaginator, MatPaginatorIntl, MatTab, MatTabGroup, PageEvent } from '@angular/material';
+import { MatCheckboxChange, MatDialog, MatMenu, MatPaginator, MatPaginatorIntl, MatTab, MatTabGroup, PageEvent } from '@angular/material';
 import { DndModule } from '@churchs19/ng2-dnd';
-import { Observable, of, Subscription } from 'rxjs';
-
-import { InputConverter } from '../../decorators';
+import { NgxMaterialTimepickerModule } from 'ngx-material-timepicker';
+import { BehaviorSubject, combineLatest, Observable, of, Subscription } from 'rxjs';
+import { BooleanConverter, InputConverter } from '../../decorators/input-converter';
 import { OntimizeService, OPermissions, OTableMenuPermissions, OTablePermissions, SnackBarService } from '../../services';
 import { dataServiceFactory } from '../../services/data-service.provider';
 import { OSharedModule } from '../../shared';
@@ -21,13 +21,13 @@ import { OFormComponent } from '../form/o-form.component';
 import { OServiceComponent } from '../o-service-component.class';
 import { ISQLOrder, OQueryDataArgs, ServiceUtils } from '../service.utils';
 import { OperatorFunction, OTableColumnCalculatedComponent } from './column/calculated/o-table-column-calculated.component';
-import { O_TABLE_CELL_EDITORS, OTableCellEditorBooleanComponent } from './column/cell-editor/cell-editor';
-import { O_TABLE_CELL_RENDERERS, OBaseTableCellRenderer } from './column/cell-renderer/cell-renderer';
+import { OTableCellEditorBooleanComponent, O_TABLE_CELL_EDITORS } from './column/cell-editor/cell-editor';
+import { OBaseTableCellRenderer, O_TABLE_CELL_RENDERERS } from './column/cell-renderer/cell-renderer';
 import { OColumnTooltip, OTableColumnComponent } from './column/o-table-column.component';
 import { OTableContextMenuComponent } from './extensions/contextmenu/o-table-context-menu.component';
-import { O_TABLE_DIALOGS, OTableFilterByColumnDataDialogComponent } from './extensions/dialog/o-table-dialog-components';
-import { O_TABLE_FOOTER_COMPONENTS, OColumnAggregate, OTableColumnAggregateComponent, OTableMatPaginatorIntl, OTablePaginatorComponent } from './extensions/footer/o-table-footer-components';
-import { ColumnValueFilterOperator, IColumnValueFilter, O_TABLE_HEADER_COMPONENTS, OTableButtonComponent, OTableButtonsComponent, OTableColumnsFilterComponent, OTableEditableRowComponent, OTableInsertableRowComponent, OTableMenuComponent, OTableOptionComponent, OTableQuickfilterComponent } from './extensions/header/o-table-header-components';
+import { OTableFilterByColumnDataDialogComponent, O_TABLE_DIALOGS } from './extensions/dialog/o-table-dialog-components';
+import { OColumnAggregate, OTableColumnAggregateComponent, OTableMatPaginatorIntl, OTablePaginatorComponent, O_TABLE_FOOTER_COMPONENTS } from './extensions/footer/o-table-footer-components';
+import { ColumnValueFilterOperator, IColumnValueFilter, OTableButtonComponent, OTableButtonsComponent, OTableColumnsFilterComponent, OTableInsertableRowComponent, OTableMenuComponent, OTableOptionComponent, OTableQuickfilterComponent, O_TABLE_HEADER_COMPONENTS } from './extensions/header/o-table-header-components';
 import { OTableStorage } from './extensions/o-table-storage.class';
 import { OTableRowDirective } from './extensions/row/o-table-row.directive';
 import { OMatSort } from './extensions/sort/o-mat-sort';
@@ -36,6 +36,7 @@ import { OMatSortModule } from './extensions/sort/o-mat-sort-module';
 import { OTableExpandedFooter } from './o-table-expanded-footer.directive';
 import { OTableDao } from './o-table.dao';
 import { OTableDataSource } from './o-table.datasource';
+
 
 export const NAME_COLUMN_SELECT = 'select';
 
@@ -50,9 +51,6 @@ export const DEFAULT_INPUTS_O_TABLE = [
 
   // sort-columns [string]: initial sorting, with the format column:[ASC|DESC], separated by ';'. Default: no value.
   'sortColumns: sort-columns',
-
-  // quick-filter [no|yes]: show quick filter. Default: yes.
-  'quickFilterPvt: quick-filter',
 
   'quickFilterCallback: quick-filter-function',
 
@@ -83,9 +81,6 @@ export const DEFAULT_INPUTS_O_TABLE = [
   // pagination-controls [yes|no|true|false]: show pagination controls. Default: yes.
   'paginationControls: pagination-controls',
 
-  // filter [yes|no|true|false]: filter si case sensitive. Default: no.
-  'filterCaseSensitive: filter-case-sensitive',
-
   // fix-header [yes|no|true|false]: fixed header and footer when the content is greather than its own height. Default: no.
   'fixedHeader: fixed-header',
 
@@ -113,7 +108,12 @@ export const DEFAULT_INPUTS_O_TABLE = [
   'resizable',
 
   // enabled [yes|no|true|false]: enables de table. Default: yes
-  'enabled'
+  'enabled',
+
+  'keepSelectedItems: keep-selected-items',
+
+  //export-mode ['visible'|'all']: sets the mode to export data. Default: 'visible'
+  'exportMode: export-mode'
 ];
 
 export const DEFAULT_OUTPUTS_O_TABLE = [
@@ -135,7 +135,7 @@ export class OColumn {
   className: string;
   orderable: boolean;
   _searchable: boolean;
-  searching: boolean;
+  searching: boolean;//this column is used to filter in quickfilter
   visible: boolean;
   renderer: OBaseTableCellRenderer;
   editor: any;
@@ -147,10 +147,12 @@ export class OColumn {
   calculate: string | OperatorFunction;
   definition: OTableColumnComponent;
   tooltip: OColumnTooltip;
-  multiline: boolean;
   resizable: boolean;
   DOMWidth: number;
-  padding: number;
+
+  private multilineSubject: BehaviorSubject<boolean> = new BehaviorSubject(this.multiline);
+  public isMultiline: Observable<boolean> = this.multilineSubject.asObservable();
+  private _multiline: boolean;
 
   constructor(
     attr: string = undefined,
@@ -237,6 +239,16 @@ export class OColumn {
     return this._searchable;
   }
 
+  set multiline(val: boolean) {
+    val = Util.parseBoolean(String(val));
+    this._multiline = val;
+    this.multilineSubject.next(this._multiline);
+  }
+
+  get multiline(): boolean {
+    return this._multiline;
+  }
+
   hasTooltip(): boolean {
     return Util.isDefined(this.tooltip);
   }
@@ -291,7 +303,7 @@ export class OColumn {
         this.DOMWidth = maxValue;
       }
     }
-    return Util.isDefined(this.DOMWidth) ? (this.DOMWidth - (this.padding || 0)) + 'px' : undefined;
+    return Util.isDefined(this.DOMWidth) ? (this.DOMWidth + 'px') : undefined;
   }
 
   set width(val: string) {
@@ -327,6 +339,7 @@ export class OColumn {
 
 }
 
+const SUFFIX_COLUMN_INSERTABLE = '_insertable';
 export class OTableOptions {
   selectColumn: OColumn;
   columns: Array<OColumn> = [];
@@ -349,6 +362,12 @@ export class OTableOptions {
     this._visibleColumns = arg;
     this.columns.forEach((oCol: OColumn) => {
       oCol.visible = this._visibleColumns.indexOf(oCol.attr) !== -1;
+    });
+  }
+
+  get columnsInsertables(): Array<string> {
+    return this._visibleColumns.map((col: string) => {
+      return col + SUFFIX_COLUMN_INSERTABLE;
     });
   }
 }
@@ -394,15 +413,12 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
   public static DEFAULT_COLUMN_MIN_WIDTH = 80;
 
   public static NAME_COLUMN_SELECT = NAME_COLUMN_SELECT;
-  public loadingScroll = false;
-  protected _loadingSorting = false;
 
   protected snackBarService: SnackBarService;
 
   public paginator: OTablePaginatorComponent;
   @ViewChild(MatPaginator) matpaginator: MatPaginator;
   @ViewChild(OMatSort) sort: OMatSort;
-  @ViewChild(OTableEditableRowComponent) oTableEditableRow: OTableEditableRowComponent;
 
   // only for insideTabBugWorkaround
   @ViewChildren(OMatSortHeader) protected sortHeaders: QueryList<OMatSortHeader>;
@@ -428,10 +444,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
   selectAllCheckbox: boolean = false;
   @InputConverter()
   exportButton: boolean = true;
-  // @InputConverter()
-  // columnsResizeButton: boolean = true;
-  // @InputConverter()
-  // columnsGroupButton: boolean = true;
   @InputConverter()
   columnsVisibilityButton: boolean = true;
   @InputConverter()
@@ -446,21 +458,23 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     this._oTableOptions = value;
   }
 
-  @InputConverter()
-  protected quickFilterPvt: boolean = true;
   set quickFilter(value: boolean) {
-    this.quickFilterPvt = value;
-    this._oTableOptions.filter = this.quickFilterPvt;
+    value = Util.parseBoolean(String(value));
+    this._quickFilter = value;
+    this._oTableOptions.filter = value;
   }
+
   get quickFilter(): boolean {
-    return this.quickFilterPvt;
+    return this._quickFilter;
   }
 
   protected filterCaseSensitivePvt: boolean = false;
   @InputConverter()
   set filterCaseSensitive(value: boolean) {
-    this.filterCaseSensitivePvt = value;
-    this._oTableOptions.filterCaseSensitive = this.filterCaseSensitivePvt;
+    this.filterCaseSensitivePvt = BooleanConverter(value);
+    if (this._oTableOptions) {
+      this._oTableOptions.filterCaseSensitive = this.filterCaseSensitivePvt;
+    }
   }
   get filterCaseSensitive(): boolean {
     return this.filterCaseSensitivePvt;
@@ -500,18 +514,21 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     this._enabled = val;
   }
 
-  protected _selectAllCheckboxVisible;
-  @InputConverter()
+  protected _selectAllCheckboxVisible: boolean;
   set selectAllCheckboxVisible(value: boolean) {
-    this._selectAllCheckboxVisible = this.state['select-column-visible'] || value;
-    this.oTableOptions.selectColumn.visible = value;
-    this.updateSelectionColumnState();
+    this._selectAllCheckboxVisible = BooleanConverter(this.state['select-column-visible']) || BooleanConverter(value);
+    this.oTableOptions.selectColumn.visible = this._selectAllCheckboxVisible;
+    this.initializeCheckboxColumn();
   }
 
   get selectAllCheckboxVisible(): boolean {
     return this._selectAllCheckboxVisible;
   }
 
+  @InputConverter()
+  keepSelectedItems: boolean = true;
+
+  public exportMode: string = Codes.EXPORT_MODE_VISIBLE;
   public daoTable: OTableDao | null;
   public dataSource: OTableDataSource | null;
   protected visibleColumns: string;
@@ -524,6 +541,9 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     return this.visibleColumns;
   }
 
+  get originalSortColumns(): string {
+    return this.sortColumns;
+  }
   get visibleColArray(): Array<any> {
     return this._visibleColArray;
   }
@@ -539,9 +559,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       }
       this._oTableOptions.visibleColumns = this._visibleColArray;
     }
-    if (this.oTableEditableRow) {
-      this.oTableEditableRow.cd.detectChanges();
-    }
+
   }
 
   public sortColArray: Array<ISQLOrder> = [];
@@ -578,7 +596,14 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
   public oTableFilterByColumnDataDialogComponent: OTableFilterByColumnDataDialogComponent;
   public oTableColumnsFilterComponent: OTableColumnsFilterComponent;
   public showFilterByColumnIcon: boolean = false;
-  public showTotals: boolean = false;
+
+
+  private showTotalsSubject = new BehaviorSubject<boolean>(false);
+  public showTotals: Observable<boolean> = this.showTotalsSubject.asObservable();
+  private loadingSortingSubject = new BehaviorSubject<boolean>(false);
+  protected loadingSorting: Observable<boolean> = this.loadingSortingSubject.asObservable();
+  private loadingScrollSubject = new BehaviorSubject<boolean>(false);
+  public loadingScroll: Observable<boolean> = this.loadingScrollSubject.asObservable();
 
   public oTableInsertableRowComponent: OTableInsertableRowComponent;
   public showFirstInsertableRow: boolean = false;
@@ -589,6 +614,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
   protected clickPrevent = false;
   protected editingCell: any;
   protected editingRow: any;
+
 
   protected _currentPage: number = 0;
   set currentPage(val: number) {
@@ -699,6 +725,10 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     this.destroy();
   }
 
+  getSuffixColumnInsertable() {
+    return SUFFIX_COLUMN_INSERTABLE;
+  }
+
   getActionsPermissions(): OPermissions[] {
     return this.permissions ? (this.permissions.actions || []) : [];
   }
@@ -776,27 +806,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     }
   }
 
-  protected initializeCheckboxColumn() {
-    if (!this.selectAllCheckbox) {
-      return;
-    }
-    // Update checkbox column visibility
-    this._oTableOptions.selectColumn.visible = !!this.state['select-column-visible'];
-
-    // Initializing row selection listener
-    if (!this.selectionChangeSubscription) {
-      this.selectionChangeSubscription = this.selection.onChange.subscribe((selectionData: SelectionChange<any>) => {
-        if (selectionData && selectionData.added.length > 0) {
-          ObservableWrapper.callEmit(this.onRowSelected, selectionData.added);
-        }
-        if (selectionData && selectionData.removed.length > 0) {
-          ObservableWrapper.callEmit(this.onRowDeselected, selectionData.removed);
-        }
-      });
-    }
-    this.updateSelectionColumnState();
-  }
-
   reinitialize(options: OTableInitializationOptions): void {
     if (options) {
       let clonedOpts = Object.assign({}, options);
@@ -868,6 +877,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       }
     });
   }
+
   /**
    * Method update store localstorage, call of the ILocalStorage
    */
@@ -875,8 +885,11 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     return this.oTableStorage.getDataToStore();
   }
 
-  registerQuickFilter(arg: OTableQuickfilterComponent) {
-    this.oTableQuickFilterComponent = arg;
+  registerQuickFilter(arg: any) {
+    const quickFilter = (arg as OTableQuickfilterComponent);
+    // forcing quickFilterComponent to be undefined, table uses oTableQuickFilterComponent
+    this.quickFilterComponent = undefined;
+    this.oTableQuickFilterComponent = quickFilter;
     this.oTableQuickFilterComponent.setValue(this.state['filter'], false);
   }
 
@@ -892,8 +905,8 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       params.class = 'o-table-context-menu ' + this.rowHeight;
 
       if (params.data && !self.selection.isSelected(params.data.rowValue)) {
-        self.selection.clear();
-        self.selection.select(params.data.rowValue);
+        self.clearSelection();
+        self.selectedRow(params.data.rowValue);
       }
     });
   }
@@ -929,13 +942,26 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       return;
     }
     let colDef: OColumn = new OColumn(column.attr, this, column);
-
     let columnWidth = column.width;
     const storedCols = this.state['oColumns-display'];
+
     if (Util.isDefined(storedCols)) {
       const storedData = storedCols.find(oCol => oCol.attr === colDef.attr);
       if (Util.isDefined(storedData) && Util.isDefined(storedData.width)) {
-        columnWidth = storedData.width;
+        // check that the width of the columns saved in the initial configuration
+        // in the local storage is different from the original value
+        if (this.state.hasOwnProperty('initial-configuration')) {
+          if (this.state['initial-configuration'].hasOwnProperty('oColumns-display')) {
+            let initialStoredCols = this.state['initial-configuration']['oColumns-display'];
+            initialStoredCols.forEach(element => {
+              if (colDef.attr === element.attr && element.width === colDef.definition.originalWidth) {
+                columnWidth = storedData.width;
+              }
+            });
+          } else {
+            columnWidth = storedData.width;
+          }
+        }
       }
     }
     if (Util.isDefined(columnWidth)) {
@@ -976,7 +1002,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
   }
 
   registerColumnAggregate(column: OColumnAggregate) {
-    this.showTotals = true;
+    this.showTotalsSubject.next(true);
     const alreadyExisting = this.getOColumn(column.attr);
     if (alreadyExisting !== undefined) {
       const replacingIndex = this._oTableOptions.columns.indexOf(alreadyExisting);
@@ -997,22 +1023,101 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
           console.warn('Unable to load the column ' + oCol.attr + ' from the localstorage');
         }
       });
-
-      //if all columns was changed then visibleColArray set with visibleColumns
-      let allColumsNotVisible = stateCols.filter(function (col) { return col.visible === true; }).length === 0;
-      if (allColumsNotVisible || stateCols.length === 0) {
-        this.visibleColArray = Util.parseArray(this.visibleColumns, true);
-      } else {
-        this.visibleColArray = stateCols.filter(item => item.visible).map(item => item.attr);
-      }
+      stateCols = this.checkChangesVisibleColummnsInInitialConfiguration(stateCols);
+      this.visibleColArray = stateCols.filter(item => item.visible).map(item => item.attr);
     } else {
       this.visibleColArray = Util.parseArray(this.visibleColumns, true);
+      this._oTableOptions.columns.sort((a: OColumn, b: OColumn) => this.visibleColArray.indexOf(a.attr) - this.visibleColArray.indexOf(b.attr));
     }
+  }
+
+  checkChangesVisibleColummnsInInitialConfiguration(stateCols) {
+    const self = this;
+    if (this.state.hasOwnProperty('initial-configuration')) {
+      if (this.state['initial-configuration'].hasOwnProperty('oColumns-display')) {
+
+        const originalVisibleColArray = this.state['initial-configuration']['oColumns-display'].map(x => {
+          if (x.visible === true) {
+            return x.attr;
+          }
+        });
+        const visibleColArray = Util.parseArray(this.originalVisibleColumns, true);
+
+        // Find values in visible-columns that they arent in original-visible-columns in localstorage
+        // in this case you have to add this column to this.visibleColArray
+        let colToAddInVisibleCol = Util.differenceArrays(visibleColArray, originalVisibleColArray);
+        if (colToAddInVisibleCol.length > 0) {
+          colToAddInVisibleCol.forEach((colAdd, index) => {
+            if (stateCols.filter(col => col.attr === colAdd).length > 0) {
+              stateCols = stateCols.map(col => {
+                if (colToAddInVisibleCol.indexOf(col.attr) > -1) {
+                  col.visible = true;
+                }
+                return col;
+              });
+            } else {
+              self.colArray.forEach((element, i) => {
+                if (element === colAdd) {
+                  stateCols.splice(i + 1, 0,
+                    {
+                      attr: colAdd,
+                      visible: true,
+                      width: undefined
+                    });
+                }
+
+              });
+            }
+          });
+        }
+
+        // Find values in original-visible-columns in localstorage that they arent in this.visibleColArray
+        // in this case you have to delete this column to this.visibleColArray
+        let colToDeleteInVisibleCol = Util.differenceArrays(originalVisibleColArray, visibleColArray);
+        if (colToDeleteInVisibleCol.length > 0) {
+          stateCols = stateCols.map(col => {
+            if (colToDeleteInVisibleCol.indexOf(col.attr) > -1) {
+              col.visible = false;
+            }
+            return col;
+          });
+        }
+      }
+    }
+    return stateCols;
   }
 
   parseSortColumns() {
     let sortColumnsParam = this.state['sort-columns'] || this.sortColumns;
     this.sortColArray = ServiceUtils.parseSortColumns(sortColumnsParam);
+
+    //checking the original sort columns with the sort columns in initial configuration in local storage
+    if (this.state['sort-columns'] && this.state['initial-configuration']['sort-columns']) {
+
+      const initialConfigSortColumnsArray = ServiceUtils.parseSortColumns(this.state['initial-configuration']['sort-columns']);
+      const originalSortColumnsArray = ServiceUtils.parseSortColumns(this.originalSortColumns);
+      const self = this;
+      // Find values in visible-columns that they arent in original-visible-columns in localstorage
+      // in this case you have to add this column to this.visibleColArray
+      let colToAddInVisibleCol = Util.differenceArrays(originalSortColumnsArray, initialConfigSortColumnsArray);
+      if (colToAddInVisibleCol.length > 0) {
+        colToAddInVisibleCol.forEach(colAdd => {
+          self.sortColArray.push(colAdd);
+        });
+      }
+
+      let colToDelInVisibleCol = Util.differenceArrays(initialConfigSortColumnsArray, originalSortColumnsArray);
+      if (colToDelInVisibleCol.length > 0) {
+        colToDelInVisibleCol.forEach((colDel) => {
+          self.sortColArray.forEach((col, i) => {
+            if (col.columnName === colDel.columnName) {
+              self.sortColArray.splice(i, 1);
+            }
+          });
+        });
+      }
+    }
+
     // ensuring column existence and checking its orderable state
     for (let i = this.sortColArray.length - 1; i >= 0; i--) {
       const colName = this.sortColArray[i].columnName;
@@ -1039,7 +1144,16 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
         columnsOrder = this.colArray.filter(attr => this.visibleColArray.indexOf(attr) === -1);
         columnsOrder.push(...this.visibleColArray);
       }
-      this._oTableOptions.columns.sort((a: OColumn, b: OColumn) => columnsOrder.indexOf(a.attr) - columnsOrder.indexOf(b.attr));
+
+      this._oTableOptions.columns.sort((a: OColumn, b: OColumn) => {
+        if (columnsOrder.indexOf(a.attr) === -1) {
+          //if it is not in local storage because it is new, keep order
+          return 0;
+        } else {
+          return columnsOrder.indexOf(a.attr) - columnsOrder.indexOf(b.attr);
+        }
+      });
+
     }
 
     // Initialize quickFilter
@@ -1052,6 +1166,19 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     // Initialize paginator
     if (!this.paginator && this.paginationControls) {
       this.paginator = new OTablePaginatorComponent(this.injector, this);
+    }
+
+
+    if (!Util.isDefined(this.selectAllCheckboxVisible)) {
+      this._oTableOptions.selectColumn.visible = !!this.state['select-column-visible'];
+    } else {
+      //checking the original selectAllCheckboxVisible with select-column-visible in initial configuration in local storage
+      if (this.state.hasOwnProperty('initial-configuration') && this.state['initial-configuration'].hasOwnProperty('select-column-visible')
+        && this.selectAllCheckboxVisible === this.state['initial-configuration']['select-column-visible']) {
+        this._oTableOptions.selectColumn.visible = !!this.state['select-column-visible'];
+      } else {
+        this._oTableOptions.selectColumn.visible = this.selectAllCheckboxVisible;
+      }
     }
 
     this.initializeCheckboxColumn();
@@ -1067,16 +1194,13 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
           clearInterval(interval);
           if (tab === self.tabContainer) {
             self.insideTabBugWorkaround();
-            if (self.tabGroupChangeSubscription) {
-              self.tabGroupChangeSubscription.unsubscribe();
-            }
             if (self.pendingQuery) {
               self.queryData(self.pendingQueryFilter);
             }
           }
         }
       };
-      interval = setInterval(timerCallback(evt.tab), 100);
+      interval = setInterval(() => { timerCallback(evt.tab); }, 100);
     });
   }
 
@@ -1110,7 +1234,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     if (this.pageable) {
       this.reloadData();
     } else {
-      this.loadingSorting = true;
+      this.loadingSortingSubject.next(true);
     }
   }
 
@@ -1126,24 +1250,20 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       const self = this;
       this.onRenderedDataChange = this.dataSource.onRenderedDataChange.subscribe(() => {
         setTimeout(() => {
-          self.loadingSorting = false;
+          self.loadingSortingSubject.next(false);
         }, 500);
       });
     }
   }
 
-  set loadingSorting(value: boolean) {
-    this._loadingSorting = value;
-    this.cd.detectChanges();
+  get showLoading() {
+    return combineLatest(
+      this.loading,
+      this.loadingSorting,
+      this.loadingScroll,
+      (x, y, z) => (x || y || z));
   }
 
-  get loadingSorting(): boolean {
-    return this._loadingSorting;
-  }
-
-  showLoading(): boolean {
-    return this.loading || this.loadingSorting || this.loadingScroll;
-  }
 
   /**
    * This method manages the call to the service
@@ -1173,67 +1293,72 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
   getComponentFilter(existingFilter: any = {}): any {
     let filter = existingFilter;
     if (this.pageable) {
-      // Apply quick filter
-      let quickFilterExpr = this.oTableQuickFilterComponent ? this.oTableQuickFilterComponent.filterExpression : undefined;
-      if (quickFilterExpr) {
+      if (Object.keys(filter).length > 0) {
         const parentItemExpr = FilterExpressionUtils.buildExpressionFromObject(filter);
-        const filterExpr = FilterExpressionUtils.buildComplexExpression(parentItemExpr, quickFilterExpr, FilterExpressionUtils.OP_AND);
         filter = {};
-        filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY] = filterExpr;
+        filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY] = parentItemExpr;
       }
-      // Apply column filters
-      let columnFilters: IColumnValueFilter[] = this.dataSource.getColumnValueFilters();
-      let beColumnFilters: Array<IExpression> = [];
-      columnFilters.forEach(colFilter => {
-        // Prepare basic expressions
-        if (Util.isDefined(colFilter.operator)) {
-          switch (colFilter.operator) {
-            case ColumnValueFilterOperator.IN:
-              if (Util.isArray(colFilter.values)) {
-                let besIn: Array<IExpression> = colFilter.values.map(value => FilterExpressionUtils.buildExpressionEquals(colFilter.attr, value));
-                let beIn: IExpression = besIn.pop();
-                besIn.forEach(be => {
-                  beIn = FilterExpressionUtils.buildComplexExpression(beIn, be, FilterExpressionUtils.OP_OR);
-                });
-                beColumnFilters.push(beIn);
-              }
-              break;
-            case ColumnValueFilterOperator.BETWEEN:
-              if (Util.isArray(colFilter.values) && colFilter.values.length === 2) {
-                let beFrom = FilterExpressionUtils.buildExpressionLessEqual(colFilter.attr, colFilter.values[0]);
-                let beTo = FilterExpressionUtils.buildExpressionMoreEqual(colFilter.attr, colFilter.values[1]);
-                beColumnFilters.push(FilterExpressionUtils.buildComplexExpression(beFrom, beTo, FilterExpressionUtils.OP_AND));
-              }
-              break;
-            case ColumnValueFilterOperator.EQUAL:
-              beColumnFilters.push(FilterExpressionUtils.buildExpressionLike(colFilter.attr, colFilter.values));
-              break;
-            case ColumnValueFilterOperator.LESS_EQUAL:
-              beColumnFilters.push(FilterExpressionUtils.buildExpressionLessEqual(colFilter.attr, colFilter.values));
-              break;
-            case ColumnValueFilterOperator.MORE_EQUAL:
-              beColumnFilters.push(FilterExpressionUtils.buildExpressionMoreEqual(colFilter.attr, colFilter.values));
-              break;
-          }
-        }
-      });
-      // Build complete column filters basic expression
-      let beColFilter: IExpression = beColumnFilters.pop();
-      beColumnFilters.forEach(be => {
-        beColFilter = FilterExpressionUtils.buildComplexExpression(beColFilter, be, FilterExpressionUtils.OP_AND);
-      });
-
+      const beColFilter = this.getColumnFiltersExpression();
       // Add column filters basic expression to current filter
-      if (beColFilter) {
-        if (!Util.isDefined(filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY])) {
-          filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY] = beColFilter;
-        } else {
-          filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY] = FilterExpressionUtils.buildComplexExpression(filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY], beColFilter, FilterExpressionUtils.OP_AND);
-        }
+      if (beColFilter && !Util.isDefined(filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY])) {
+        filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY] = beColFilter;
+      } else if (beColFilter) {
+        filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY] =
+          FilterExpressionUtils.buildComplexExpression(filter[FilterExpressionUtils.FILTER_EXPRESSION_KEY], beColFilter, FilterExpressionUtils.OP_AND);
       }
     }
-
     return super.getComponentFilter(filter);
+  }
+
+  protected getQuickFilterExpression(): IExpression {
+    if (Util.isDefined(this.oTableQuickFilterComponent)) {
+      return this.oTableQuickFilterComponent.filterExpression;
+    }
+    return undefined;
+  }
+
+  protected getColumnFiltersExpression(): IExpression {
+    // Apply column filters
+    let columnFilters: IColumnValueFilter[] = this.dataSource.getColumnValueFilters();
+    let beColumnFilters: Array<IExpression> = [];
+    columnFilters.forEach(colFilter => {
+      // Prepare basic expressions
+      switch (colFilter.operator) {
+        case ColumnValueFilterOperator.IN:
+          if (Util.isArray(colFilter.values)) {
+            let besIn: Array<IExpression> = colFilter.values.map(value => FilterExpressionUtils.buildExpressionEquals(colFilter.attr, value));
+            let beIn: IExpression = besIn.pop();
+            besIn.forEach(be => {
+              beIn = FilterExpressionUtils.buildComplexExpression(beIn, be, FilterExpressionUtils.OP_OR);
+            });
+            beColumnFilters.push(beIn);
+          }
+          break;
+        case ColumnValueFilterOperator.BETWEEN:
+          if (Util.isArray(colFilter.values) && colFilter.values.length === 2) {
+            let beFrom = FilterExpressionUtils.buildExpressionLessEqual(colFilter.attr, colFilter.values[0]);
+            let beTo = FilterExpressionUtils.buildExpressionMoreEqual(colFilter.attr, colFilter.values[1]);
+            beColumnFilters.push(FilterExpressionUtils.buildComplexExpression(beFrom, beTo, FilterExpressionUtils.OP_AND));
+          }
+          break;
+        case ColumnValueFilterOperator.EQUAL:
+          beColumnFilters.push(FilterExpressionUtils.buildExpressionLike(colFilter.attr, colFilter.values));
+          break;
+        case ColumnValueFilterOperator.LESS_EQUAL:
+          beColumnFilters.push(FilterExpressionUtils.buildExpressionLessEqual(colFilter.attr, colFilter.values));
+          break;
+        case ColumnValueFilterOperator.MORE_EQUAL:
+          beColumnFilters.push(FilterExpressionUtils.buildExpressionMoreEqual(colFilter.attr, colFilter.values));
+          break;
+      }
+
+    });
+    // Build complete column filters basic expression
+    let beColFilter: IExpression = beColumnFilters.pop();
+    beColumnFilters.forEach(be => {
+      beColFilter = FilterExpressionUtils.buildComplexExpression(beColFilter, be, FilterExpressionUtils.OP_AND);
+    });
+    return beColFilter;
   }
 
   updatePaginationInfo(queryRes: any) {
@@ -1242,12 +1367,8 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
 
   protected setData(data: any, sqlTypes: any) {
     this.daoTable.sqlTypesChange.next(sqlTypes);
-    this.daoTable.dataChange.next(data);
-    this.daoTable.isLoadingResults = false;
+    this.daoTable.setDataArray(data);
     this.updateScrolledState();
-    if (Util.isDefined(data)) {
-      this.oTableExpandedFooter.updateMessageNotResults(data);
-    }
     if (this.pageable) {
       ObservableWrapper.callEmit(this.onPaginatedDataLoaded, data);
     }
@@ -1265,25 +1386,29 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
   projectContentChanged() {
     const self = this;
     setTimeout(function () {
-      self.loadingSorting = false;
+      self.loadingSortingSubject.next(false);
     }, 500);
-    this.loadingScroll = false;
+    this.loadingScrollSubject.next(false);
 
     if (this.previousRendererData !== this.dataSource.renderedData) {
       ObservableWrapper.callEmit(this.onContentChange, this.dataSource.renderedData);
       this.previousRendererData = this.dataSource.renderedData;
     }
 
-    if (Util.isDefined(this.tableHeaderEl)) {
-      [].slice.call(this.tableHeaderEl.nativeElement.children).forEach(thEl => {
-        const oCol: OColumn = self.getOColumnFromTh(thEl);
-        if (Util.isDefined(oCol)) {
-          if (!Util.isDefined(oCol.padding)) {
-            oCol.padding = (!thEl.previousElementSibling || !thEl.nextElementSibling) ? OTableComponent.FIRST_LAST_CELL_PADDING : 0;
-          }
-          if (!Util.isDefined(oCol.DOMWidth) && thEl.clientWidth > 0) {
-            oCol.DOMWidth = thEl.clientWidth;
-          }
+    this.getColumnsWidthFromDOM();
+
+    if (this.state.hasOwnProperty('selection') && this.dataSource.renderedData.length > 0 && this.getSelectedItems().length === 0) {
+      this.state.selection.forEach(selectedItem => {
+        // finding selected item data in the table rendered data
+        const foundItem = this.dataSource.renderedData.find(data => {
+          let result = true;
+          Object.keys(selectedItem).forEach(key => {
+            result = result && (data[key] === selectedItem[key]);
+          });
+          return result;
+        });
+        if (foundItem) {
+          this.selection.select(foundItem);
         }
       });
     }
@@ -1390,7 +1515,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       if (this.selectAllCheckbox) {
         this._oTableOptions.selectColumn.visible = true;
       }
-      this.updateSelectionColumnState();
+      this.initializeCheckboxColumn();
       this.selectAll();
     }
   }
@@ -1407,7 +1532,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     if (!this.checkEnabledActionPermission(PermissionsUtils.ACTION_REFRESH)) {
       return;
     }
-
+    Object.assign(this.state, this.oTableStorage.getTablePropertyToStore('selection'));
     this.clearSelection();
     this.finishQuerySubscription = false;
     this.pendingQuery = true;
@@ -1439,6 +1564,8 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     if ((this.detailMode === Codes.DETAIL_MODE_CLICK)) {
       ObservableWrapper.callEmit(this.onClick, item);
       this.saveDataNavigationInLocalStorage();
+      this.selection.clear();
+      this.selectedRow(item);
       this.viewDetail(item);
       return;
     }
@@ -1496,8 +1623,8 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       return;
     }
 
-    const editingColumn = this._oTableOptions.columns.filter(item => item.editing);
-    if (editingColumn && editingColumn.length > 0) {
+    const activeEditingColumns = this._oTableOptions.columns.filter(item => item.editing);
+    if (activeEditingColumns && activeEditingColumns.length > 0) {
       return;
     }
 
@@ -1506,14 +1633,9 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       return;
     }
 
-    const tableContent = this.elRef.nativeElement.querySelector('.o-table-container');
-    if (!tableContent) {
-      return;
-    }
-
-    if (tableContent && !tableContent.contains(event.target)
-      && (!this.editingCell || !this.editingCell.contains(event.target))
-      && this.selection && this.selection.selected.length) {
+    const tableContainer = this.elRef.nativeElement.querySelector('.o-table-container');
+    const tableContent = this.elRef.nativeElement.querySelector('.o-table-container table.mat-table');
+    if (tableContainer && tableContent && tableContainer.contains(event.target) && !tableContent.contains(event.target)) {
       this.clearSelection();
     }
   }
@@ -1552,15 +1674,18 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
 
     this.clearSelectionAndEditing();
     this.selectedRow(row);
-    this.editingCell = event.currentTarget;
+    if (event) {
+      this.editingCell = event.currentTarget;
+    }
     let rowData = {};
     this.keysArray.forEach((key) => {
       rowData[key] = row[key];
     });
     rowData[column.attr] = row[column.attr];
     this.editingRow = row;
-    column.editor.startEdition(rowData);
     column.editing = true;
+    column.editor.startEdition(rowData);
+    this.cd.detectChanges();
   }
 
   updateCellData(column: OColumn, data: any, saveChanges: boolean) {
@@ -1576,7 +1701,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       Object.assign(this.editingRow, data);
     }
     this.editingRow = undefined;
-    this.cd.detectChanges();
     if (saveChanges && column.editor.updateRecordOnEdit) {
       let toUpdate = {};
       toUpdate[column.attr] = data[column.attr];
@@ -1607,7 +1731,22 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     }
   }
 
-  updateSelectionColumnState() {
+  initializeCheckboxColumn() {
+    // Initializing row selection listener
+    if (!this.selectionChangeSubscription && this.oTableOptions.selectColumn.visible) {
+      this.selectionChangeSubscription = this.selection.onChange.subscribe((selectionData: SelectionChange<any>) => {
+        if (selectionData && selectionData.added.length > 0) {
+          ObservableWrapper.callEmit(this.onRowSelected, selectionData.added);
+        }
+        if (selectionData && selectionData.removed.length > 0) {
+          ObservableWrapper.callEmit(this.onRowDeselected, selectionData.removed);
+        }
+      });
+    }
+    this.updateSelectionColumnState();
+  }
+
+  protected updateSelectionColumnState() {
     if (!this._oTableOptions.selectColumn.visible) {
       this.clearSelection();
     }
@@ -1615,9 +1754,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       this._oTableOptions.visibleColumns.unshift(OTableComponent.NAME_COLUMN_SELECT);
     } else if (this._oTableOptions.visibleColumns && !this._oTableOptions.selectColumn.visible && this._oTableOptions.visibleColumns[0] === OTableComponent.NAME_COLUMN_SELECT) {
       this._oTableOptions.visibleColumns.shift();
-    }
-    if (this.oTableInsertableRowComponent !== undefined && this.oTableEditableRow) {
-      this.oTableEditableRow.cd.detectChanges();
     }
   }
 
@@ -1644,6 +1780,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
 
   public selectedRow(row: any): void {
     this.setSelected(row);
+    this.cd.detectChanges();
   }
 
   get showDeleteButton(): boolean {
@@ -1702,7 +1839,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
             data = res.data;
           }
           this.daoTable.setAsynchronousColumn(data, rowData);
-          this.cd.detectChanges();
         }
       });
     }
@@ -1714,6 +1850,10 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
 
   getAllValues() {
     return this.dataSource.getCurrentAllData();
+  }
+
+  getAllRenderedValues() {
+    return this.dataSource.getAllRendererData();
   }
 
   getRenderedValue() {
@@ -1788,7 +1928,8 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
         previousFilter: this.dataSource.getColumnValueFilterByAttr(column.attr),
         column: column,
         tableData: this.dataSource.getTableData(),
-        preloadValues: this.oTableColumnsFilterComponent.preloadValues
+        preloadValues: this.oTableColumnsFilterComponent.preloadValues,
+        mode: this.oTableColumnsFilterComponent.mode
       },
       disableClose: true,
       panelClass: ['o-dialog-class', 'o-table-dialog']
@@ -1802,7 +1943,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       }
     });
   }
-
 
   get disableTableMenuButton(): boolean {
     return !!(this.permissions && this.permissions.menu && this.permissions.menu.enabled === false);
@@ -1824,6 +1964,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       this.oTableInsertableRowComponent = tableInsertableRow;
       this.showFirstInsertableRow = this.oTableInsertableRowComponent.isFirstRow();
       this.showLastInsertableRow = !this.showFirstInsertableRow;
+      this.oTableInsertableRowComponent.initializeEditors();
     }
   }
 
@@ -1937,7 +2078,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     }
     if (!Util.isDefined(sqlTypes)) {
       let allSqlTypes = this.getSqlTypes();
-      let sqlTypes = {};
+      sqlTypes = {};
       Object.keys(recordData).forEach(key => {
         sqlTypes[key] = allSqlTypes[key];
       });
@@ -1973,7 +2114,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       this.staticData = data;
       this.daoTable.usingStaticData = true;
       this.daoTable.setDataArray(this.staticData);
-      this.cd.detectChanges();
     }
   }
 
@@ -2012,7 +2152,18 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
   }
 
   setFiltersConfiguration(conf: any) {
-    this.filterCaseSensitive = conf.hasOwnProperty('filter-case-sensitive') ? conf['filter-case-sensitive'] : this.filterCaseSensitive;
+    //initialize filterCaseSensitive
+
+    /*
+      Checking the original filterCaseSensitive with the filterCaseSensitive in initial configuration in local storage
+      if filterCaseSensitive in initial configuration is equals to original filterCaseSensitive input
+      filterCaseSensitive will be the value in local storage
+    */
+    if (Util.isDefined(this.filterCaseSensitive) && this.state.hasOwnProperty('initial-configuration') &&
+      this.state['initial-configuration'].hasOwnProperty('filter-case-sensitive') &&
+      this.filterCaseSensitive === conf['initial-configuration']['filter-case-sensitive']) {
+      this.filterCaseSensitive = conf.hasOwnProperty('filter-case-sensitive') ? conf['filter-case-sensitive'] : this.filterCaseSensitive;
+    }
 
     const storedColumnFilters = this.oTableStorage.getStoredColumnsFilters(conf);
     this.showFilterByColumnIcon = storedColumnFilters.length > 0;
@@ -2030,9 +2181,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
       storedColumnsData.forEach((oColData: any) => {
         const oCol = this.getOColumn(oColData.attr);
         if (oCol) {
-          if (oColData.hasOwnProperty('searchable')) {
-            oCol.searchable = oColData.searchable;
-          }
           if (oColData.hasOwnProperty('searching')) {
             oCol.searching = oColData.searching;
           }
@@ -2157,7 +2305,7 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
 
     // throw event change scroll
     if (pageVirtualBefore !== this.pageScrollVirtual) {
-      this.loadingScroll = true;
+      this.loadingScrollSubject.next(true);
       this.dataSource.loadDataScrollable = this.pageScrollVirtual;
     }
   }
@@ -2200,7 +2348,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     return height;
   }
 
-
   isDetailMode(): boolean {
     return this.detailMode !== Codes.DETAIL_MODE_NONE;
   }
@@ -2213,7 +2360,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     let selectedItems = this.dataSource.getRenderedData(this.getSelectedItems());
     Util.copyToClipboard(JSON.stringify(selectedItems));
   }
-
 
   viewDetail(item: any): void {
     if (!this.checkEnabledActionPermission('detail')) {
@@ -2238,6 +2384,42 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     }
     return result;
   }
+
+  getColumnInsertable(name): string {
+    return name + this.getSuffixColumnInsertable();
+  }
+
+  isRowSelected(row: any): boolean {
+    return !this.isSelectionModeNone() && this.selection.isSelected(row);
+  }
+
+  protected getColumnsWidthFromDOM() {
+    if (Util.isDefined(this.tableHeaderEl)) {
+      [].slice.call(this.tableHeaderEl.nativeElement.children).forEach(thEl => {
+        const oCol: OColumn = this.getOColumnFromTh(thEl);
+        if (Util.isDefined(oCol) && thEl.clientWidth > 0 && oCol.DOMWidth !== thEl.clientWidth) {
+          oCol.DOMWidth = thEl.clientWidth;
+        }
+      });
+    }
+  }
+
+  refreshColumnsWidth() {
+    this.oTableOptions.columns.filter(c => c.visible).forEach((c) => {
+      c.DOMWidth = undefined;
+    });
+    this.cd.detectChanges();
+    setTimeout(() => {
+      this.getColumnsWidthFromDOM();
+      this.oTableOptions.columns.filter(c => c.visible).forEach(c => {
+        if (Util.isDefined(c.definition) && Util.isDefined(c.definition.width)) {
+          c.width = c.definition.width;
+        }
+        c.getRenderWidth();
+      });
+      this.cd.detectChanges();
+    }, 0);
+  }
 }
 
 @NgModule({
@@ -2261,7 +2443,8 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
     DndModule,
     OContextMenuModule,
     ObserversModule,
-    OMatSortModule
+    OMatSortModule,
+    NgxMaterialTimepickerModule
   ],
   exports: [
     OTableComponent,
@@ -2287,7 +2470,6 @@ export class OTableComponent extends OServiceComponent implements OnInit, OnDest
   providers: [{
     provide: MatPaginatorIntl,
     useClass: OTableMatPaginatorIntl
-  },
-  { provide: MAT_RIPPLE_GLOBAL_OPTIONS, useValue: { disabled: true } }]
+  }]
 })
 export class OTableModule { }

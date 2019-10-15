@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, EventEmitter, forwardRef, Inject, Injector, NgModule, OnChanges, OnInit, Optional, SimpleChange, ViewChild } from '@angular/core';
 import { FormControl } from '@angular/forms';
 import { MatDialog, MatDialogConfig, MatDialogRef, MatInput } from '@angular/material';
-
 import { InputConverter } from '../../../decorators';
 import { OntimizeService } from '../../../services';
 import { dataServiceFactory } from '../../../services/data-service.provider';
@@ -12,8 +11,10 @@ import { IFormValueOptions } from '../../form/form-components';
 import { OFormComponent } from '../../form/o-form.component';
 import { OSearchInputModule } from '../../input/search-input/o-search-input.component';
 import { OValueChangeEvent } from '../../o-form-data-component.class';
+import { OFormControl } from '../o-form-control.class';
 import { OFormServiceComponent } from '../o-form-service-component.class';
 import { OListPickerDialogComponent } from './o-list-picker-dialog.component';
+
 
 export const DEFAULT_INPUTS_O_LIST_PICKER = [
   ...OFormServiceComponent.DEFAULT_INPUTS_O_FORM_SERVICE_COMPONENT,
@@ -21,7 +22,9 @@ export const DEFAULT_INPUTS_O_LIST_PICKER = [
   'dialogWidth : dialog-width',
   'dialogHeight : dialog-height',
   'queryRows: query-rows',
-  'textInputEnabled: text-input-enabled'
+  'textInputEnabled: text-input-enabled',
+  'dialogDisableClose: dialog-disable-close',
+  'dialogClass: dialog-class'
 ];
 
 export const DEFAULT_OUTPUTS_O_LIST_PICKER = [
@@ -52,15 +55,24 @@ export class OListPickerComponent extends OFormServiceComponent implements After
   public onDialogCancel: EventEmitter<any> = new EventEmitter();
   /* End outputs */
 
+  public stateCtrl: FormControl;
+
   /* Inputs */
   @InputConverter()
   public textInputEnabled: boolean = true;
   @InputConverter()
+  public dialogDisableClose: boolean = false;
+  @InputConverter()
   protected filter: boolean = true;
   protected dialogWidth: string;
   protected dialogHeight: string = '55%';
+  protected dialogClass: string;
   @InputConverter()
   protected queryRows: number;
+
+  /*Override clearButton = true */
+  // @InputConverter()
+  // public clearButton: boolean = true;
   /* End inputs */
 
   protected matDialog: MatDialog;
@@ -74,8 +86,6 @@ export class OListPickerComponent extends OFormServiceComponent implements After
   protected blurDelay = 200;
   protected blurPrevent = false;
 
-  public stateCtrl: FormControl;
-
   constructor(
     @Optional() @Inject(forwardRef(() => OFormComponent)) form: OFormComponent,
     elRef: ElementRef,
@@ -83,6 +93,8 @@ export class OListPickerComponent extends OFormServiceComponent implements After
     super(form, elRef, injector);
     this.matDialog = this.injector.get(MatDialog);
     this.stateCtrl = new FormControl();
+    /* overwritte clearButton to true */
+    this.clearButton = true;
   }
 
   public ngOnInit(): void {
@@ -95,6 +107,12 @@ export class OListPickerComponent extends OFormServiceComponent implements After
       this.cacheQueried = true;
       this.setDataArray(changes['staticData'].currentValue);
     }
+  }
+
+  public createFormControl(): OFormControl {
+    this._fControl = super.createFormControl();
+    this._fControl.fControlChildren = [this.stateCtrl];
+    return this._fControl;
   }
 
   public ensureOFormValue(value: any): void {
@@ -192,7 +210,6 @@ export class OListPickerComponent extends OFormServiceComponent implements After
             self.visibleInputValue = undefined;
           } else {
             self._fControl.markAsTouched();
-            self.onBlur.emit(evt);
           }
         }
         self.blurPrevent = false;
@@ -219,12 +236,13 @@ export class OListPickerComponent extends OFormServiceComponent implements After
   protected openDialog(): void {
     const cfg: MatDialogConfig = {
       role: 'dialog',
-      disableClose: false,
-      panelClass: ['cdk-overlay-list-picker', 'o-dialog-class'],
+      disableClose: this.dialogDisableClose,
+      panelClass: ['cdk-overlay-list-picker', 'o-dialog-class', this.dialogClass],
       data: {
         data: this.getDialogDataArray(this.dataArray),
         filter: this.filter,
         searchVal: this.visibleInputValue,
+        menuColumns: this.visibleColumns, // TODO: improve this, this is passed to `o-search-input` of the dialog
         visibleColumns: this.visibleColArray,
         queryRows: this.queryRows
       }

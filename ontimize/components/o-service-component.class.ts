@@ -1,19 +1,18 @@
 import { SelectionModel } from '@angular/cdk/collections';
-import { ElementRef, Injector } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
-
-import { OFilterBuilderComponent } from '../components';
+import { ElementRef, forwardRef, Injector, ViewChild } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { OFilterBuilderComponent, OSearchInputComponent } from '../components';
 import { InputConverter } from '../decorators';
 import { OFormLayoutDialogComponent } from '../layouts/form-layout/dialog/o-form-layout-dialog.component';
 import { OFormLayoutManagerComponent } from '../layouts/form-layout/o-form-layout-manager.component';
 import { NavigationService, OTranslateService, PermissionsService } from '../services';
 import { Codes, Util } from '../utils';
-import { FilterExpressionUtils } from './filter-expression.utils';
+import { FilterExpressionUtils, IExpression } from './filter-expression.utils';
 import { OFormComponent } from './form/o-form.component';
 import { OListInitializationOptions } from './list/o-list.component';
 import { DEFAULT_INPUTS_O_SERVICE_BASE_COMPONENT, OServiceBaseComponent } from './o-service-base-component.class';
 import { OTableInitializationOptions } from './table/o-table.component';
-
 export const DEFAULT_INPUTS_O_SERVICE_COMPONENT = [
   ...DEFAULT_INPUTS_O_SERVICE_BASE_COMPONENT,
 
@@ -65,7 +64,13 @@ export const DEFAULT_INPUTS_O_SERVICE_COMPONENT = [
   'insertFormRoute: insert-form-route',
 
   // recursive-insert [no|yes]: do not append insert keys when navigate (overwrite current). Default: no.
-  'recursiveInsert: recursive-insert'
+  'recursiveInsert: recursive-insert',
+
+  // filter [yes|no|true|false]: whether filter is case sensitive. Default: no.
+  'filterCaseSensitive: filter-case-sensitive',
+
+  // quick-filter [no|yes]: show quick filter. Default: yes.
+  'quickFilter: quick-filter',
 ];
 
 export class OServiceComponent extends OServiceBaseComponent {
@@ -108,21 +113,51 @@ export class OServiceComponent extends OServiceBaseComponent {
   editButtonInRowIcon: string = Codes.EDIT_ICON;
   @InputConverter()
   insertButton: boolean;
-  rowHeight: string = Codes.DEFAULT_ROW_HEIGHT;
+  protected _rowHeight = Codes.DEFAULT_ROW_HEIGHT;
+  protected rowHeightSubject: BehaviorSubject<string> = new BehaviorSubject(this._rowHeight);
+  public rowHeightObservable: Observable<string> = this.rowHeightSubject.asObservable();
+
+  set rowHeight(value) {
+    this._rowHeight = value ? value.toLowerCase() : value;
+    if (!Codes.isValidRowHeight(this._rowHeight)) {
+      this._rowHeight = Codes.DEFAULT_ROW_HEIGHT;
+    }
+    this.rowHeightSubject.next(this._rowHeight);
+  }
+  get rowHeight(): string {
+    return this._rowHeight;
+  }
   protected insertFormRoute: string;
   @InputConverter()
   protected recursiveInsert: boolean = false;
+  @InputConverter()
+  public filterCaseSensitive: boolean = false;
+  protected _quickFilter: boolean = true;
+  get quickFilter(): boolean {
+    return this._quickFilter;
+  }
+  set quickFilter(val: boolean) {
+    val = Util.parseBoolean(String(val));
+    this._quickFilter = val;
+    if (val) {
+      setTimeout(() => this.registerQuickFilter(this.searchInputComponent), 0);
+    }
+  }
   /* end of inputs variables */
 
   public filterBuilder: OFilterBuilderComponent;
   public selection = new SelectionModel<Element>(true, []);
 
-  protected router: Router;
-  protected actRoute: ActivatedRoute;
-
   protected onTriggerUpdateSubscription: any;
   protected formLayoutManager: OFormLayoutManagerComponent;
-  protected oFormLayoutDialog: OFormLayoutDialogComponent;
+  protected formLayoutManagerTabIndex: number;
+  public oFormLayoutDialog: OFormLayoutDialogComponent;
+
+  protected tabsSubscriptions: any;
+  public quickFilterComponent: OSearchInputComponent;
+  @ViewChild((forwardRef(() => OSearchInputComponent)))
+  protected searchInputComponent: OSearchInputComponent;
+  protected quickFilterColArray: string[];
 
   constructor(
     injector: Injector,
@@ -130,8 +165,6 @@ export class OServiceComponent extends OServiceBaseComponent {
     protected form: OFormComponent
   ) {
     super(injector);
-    this.router = this.injector.get(Router);
-    this.actRoute = this.injector.get(ActivatedRoute);
     this.permissionsService = this.injector.get(PermissionsService);
     this.translateService = this.injector.get(OTranslateService);
     this.navigationService = this.injector.get(NavigationService);
@@ -149,15 +182,30 @@ export class OServiceComponent extends OServiceBaseComponent {
   }
 
   public initialize(): void {
+    if (this.formLayoutManager && this.formLayoutManager.isTabMode() && this.formLayoutManager.oTabGroup) {
+
+      this.formLayoutManagerTabIndex = this.formLayoutManager.oTabGroup.data.length;
+
+      this.tabsSubscriptions = this.formLayoutManager.oTabGroup.onSelectedTabChange.subscribe(() => {
+        if (this.formLayoutManagerTabIndex !== this.formLayoutManager.oTabGroup.selectedTabIndex) {
+          this.updateStateStorage();
+          // when the storage is updated because a form layout manager tab change
+          // the alreadyStored control variable is changed to its initial value
+          this.alreadyStored = false;
+        }
+      });
+
+      this.tabsSubscriptions.add(this.formLayoutManager.oTabGroup.onCloseTab.subscribe(() => {
+        if (this.formLayoutManagerTabIndex === this.formLayoutManager.oTabGroup.selectedTabIndex) {
+          this.updateStateStorage();
+        }
+      }));
+    }
     super.initialize();
     if (this.detailButtonInRow || this.editButtonInRow) {
       this.detailMode = Codes.DETAIL_MODE_NONE;
     }
 
-    this.rowHeight = this.rowHeight ? this.rowHeight.toLowerCase() : this.rowHeight;
-    if (!Codes.isValidRowHeight(this.rowHeight)) {
-      this.rowHeight = Codes.DEFAULT_ROW_HEIGHT;
-    }
   }
 
   public afterViewInit(): void {
@@ -165,7 +213,6 @@ export class OServiceComponent extends OServiceBaseComponent {
     if (this.elRef) {
       this.elRef.nativeElement.removeAttribute('title');
     }
-
     if (this.formLayoutManager && this.formLayoutManager.isMainComponent(this)) {
       this.onTriggerUpdateSubscription = this.formLayoutManager.onTriggerUpdate.subscribe(() => {
         this.reloadData();
@@ -177,6 +224,9 @@ export class OServiceComponent extends OServiceBaseComponent {
     super.destroy();
     if (this.onTriggerUpdateSubscription) {
       this.onTriggerUpdateSubscription.unsubscribe();
+    }
+    if (this.tabsSubscriptions) {
+      this.tabsSubscriptions.unsubscribe();
     }
   }
 
@@ -327,7 +377,7 @@ export class OServiceComponent extends OServiceBaseComponent {
         queryMethod: this.pageable ? this.paginatedQueryMethod : this.queryMethod,
         totalRecordsNumber: this.getTotalRecordsNumber(),
         queryRows: this.queryRows,
-        queryRecordOffset: (this.state.queryRecordOffset - this.queryRows)
+        queryRecordOffset: Math.max(this.state.queryRecordOffset - this.queryRows, 0)
       }, result);
     }
     return result;
@@ -407,19 +457,36 @@ export class OServiceComponent extends OServiceBaseComponent {
   public getComponentFilter(existingFilter: any = {}): any {
     let filter = super.getComponentFilter(existingFilter);
 
-    // Add filter from o-filter-builder component
-    if (Util.isDefined(this.filterBuilder)) {
-      let fbFilter = this.filterBuilder.getExpression();
-      if (Util.isDefined(fbFilter)) {
-        if (!Util.isDefined(filter[FilterExpressionUtils.BASIC_EXPRESSION_KEY])) {
-          filter[FilterExpressionUtils.BASIC_EXPRESSION_KEY] = fbFilter;
-        } else {
-          filter[FilterExpressionUtils.BASIC_EXPRESSION_KEY] = FilterExpressionUtils.buildComplexExpression(filter[FilterExpressionUtils.BASIC_EXPRESSION_KEY], fbFilter, FilterExpressionUtils.OP_AND);
-        }
-      }
+    const quickFilterExpr = this.getQuickFilterExpression();
+    const filterBuilderExpr = this.getFilterBuilderExpression();
+    let complexExpr = quickFilterExpr || filterBuilderExpr;
+    if (quickFilterExpr && filterBuilderExpr) {
+      complexExpr = FilterExpressionUtils.buildComplexExpression(quickFilterExpr, filterBuilderExpr, FilterExpressionUtils.OP_AND);
+    }
+
+    if (complexExpr && !Util.isDefined(filter[FilterExpressionUtils.BASIC_EXPRESSION_KEY])) {
+      filter[FilterExpressionUtils.BASIC_EXPRESSION_KEY] = complexExpr;
+    } else if (complexExpr) {
+      filter[FilterExpressionUtils.BASIC_EXPRESSION_KEY] =
+        FilterExpressionUtils.buildComplexExpression(filter[FilterExpressionUtils.BASIC_EXPRESSION_KEY], complexExpr, FilterExpressionUtils.OP_AND);
     }
 
     return filter;
+  }
+
+  protected getQuickFilterExpression(): IExpression {
+    if (this.pageable && Util.isDefined(this.quickFilterComponent)) {
+      return this.quickFilterComponent.filterExpression;
+    }
+    return undefined;
+  }
+
+  protected getFilterBuilderExpression(): IExpression {
+    // Add filter from o-filter-builder component
+    if (Util.isDefined(this.filterBuilder)) {
+      return this.filterBuilder.getExpression();
+    }
+    return undefined;
   }
 
   protected storeNavigationFormRoutes(activeMode: string, queryConf?: any): void {
@@ -450,4 +517,103 @@ export class OServiceComponent extends OServiceBaseComponent {
     });
   }
 
+  getRouteKey(): string {
+    let route = '';
+    if (this.formLayoutManager && !this.formLayoutManager.isMainComponent(this)) {
+      route = this.router.url;
+      const params = this.formLayoutManager.getParams();
+      if (params) {
+        route += '/' + (Object.keys(params).join('/'));
+      }
+    } else {
+      route = super.getRouteKey();
+    }
+    return route;
+  }
+
+  get elementRef(): ElementRef {
+    return this.elRef;
+  }
+
+  initializeState() {
+    let routeKey = super.getRouteKey();
+    if (this.formLayoutManager && this.formLayoutManager.isTabMode() && !this.formLayoutManager.isMainComponent(this)) {
+      try {
+        const params = this.formLayoutManager.oTabGroup.state.tabsData[0].params;
+        if (params) {
+          routeKey = this.router.url;
+          routeKey += '/' + (Object.keys(params).join('/'));
+        }
+      } catch (e) {
+        //
+      }
+    }
+    // Get previous status
+    this.state = this.localStorageService.getComponentStorage(this, routeKey);
+
+  }
+
+  public showCaseSensitiveCheckbox(): boolean {
+    return !this.pageable;
+  }
+
+  public registerQuickFilter(arg: any): void {
+    const quickFilter = (arg as OSearchInputComponent);
+    if (Util.isDefined(this.quickFilterComponent)) {
+      // avoiding to register a quickfiltercomponent if it already exists one
+      return;
+    }
+    this.quickFilterComponent = quickFilter;
+    if (Util.isDefined(this.quickFilterComponent)) {
+      if (this.state.hasOwnProperty('filterValue')) {
+        this.quickFilterComponent.setValue(this.state.filterValue);
+      }
+      if (this.state.hasOwnProperty('quickFilterActiveColumns')) {
+        const parsedArr = Util.parseArray(this.state.quickFilterActiveColumns, true);
+        this.quickFilterComponent.setActiveColumns(parsedArr);
+      }
+      this.quickFilterComponent.onSearch.subscribe(val => this.filterData(val));
+    }
+  }
+
+  public filterData(value?: string, loadMore?: boolean): void {
+    //
+  }
+
+  public isFilterCaseSensitive(): boolean {
+    const useQuickFilterValue = Util.isDefined(this.quickFilterComponent) && this.showCaseSensitiveCheckbox();
+    if (useQuickFilterValue) {
+      return this.quickFilterComponent.filterCaseSensitive;
+    }
+    return this.filterCaseSensitive;
+  }
+
+  public configureFilterValue(value: string): string {
+    let returnVal = value;
+    if (value && value.length > 0) {
+      if (!value.startsWith('*')) {
+        returnVal = '*' + returnVal;
+      }
+      if (!value.endsWith('*')) {
+        returnVal = returnVal + '*';
+      }
+    }
+    return returnVal;
+  }
+
+  public getQuickFilterValue(): string {
+    const result = '';
+    if (Util.isDefined(this.quickFilterComponent)) {
+      return this.quickFilterComponent.getValue() || '';
+    }
+    return result;
+  }
+
+  public getQuickFilterColumns(): string[] {
+    let result = this.quickFilterColArray;
+    if (Util.isDefined(this.quickFilterComponent)) {
+      result = this.quickFilterComponent.getActiveColumns();
+    }
+    return result;
+  }
 }

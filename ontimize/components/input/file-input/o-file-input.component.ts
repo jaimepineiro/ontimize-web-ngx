@@ -1,14 +1,14 @@
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, EventEmitter, forwardRef, Inject, Injector, NgModule, OnInit, Optional, ViewChild } from '@angular/core';
 import { FormControl, ValidationErrors, ValidatorFn } from '@angular/forms';
-
 import { InputConverter } from '../../../decorators';
 import { OntimizeFileService } from '../../../services';
 import { OSharedModule } from '../../../shared';
 import { OFormComponent } from '../../form/o-form.component';
-import { DEFAULT_INPUTS_O_FORM_DATA_COMPONENT, OFormDataComponent, OValueChangeEvent } from '../../o-form-data-component.class';
+import { DEFAULT_OUTPUTS_O_FORM_DATA_COMPONENT, OFormDataComponent, OValueChangeEvent } from '../../o-form-data-component.class';
 import { OFileItem } from './o-file-item.class';
 import { OFileUploader } from './o-file-uploader.class';
+
 
 export const DEFAULT_INPUTS_O_FILE_INPUT = [
   'oattr: attr',
@@ -55,7 +55,7 @@ export const DEFAULT_INPUTS_O_FILE_INPUT = [
 ];
 
 export const DEFAULT_OUTPUTS_O_FILE_INPUT = [
-  ...DEFAULT_INPUTS_O_FORM_DATA_COMPONENT,
+  ...DEFAULT_OUTPUTS_O_FORM_DATA_COMPONENT,
   'onBeforeUpload',
   'onBeforeUploadFile',
   'onProgress',
@@ -128,7 +128,7 @@ export class OFileInputComponent extends OFormDataComponent implements OnInit {
 
   ngOnInit() {
     super.ngOnInit();
-  
+
     this.initialize();
 
     this.uploader.onBeforeUploadAll = () => this.onBeforeUpload.emit();
@@ -192,14 +192,6 @@ export class OFileInputComponent extends OFormDataComponent implements OnInit {
       validators.push(this.maxFilesValidator.bind(this));
     }
     return validators;
-  }
-
-  public innerOnChange(event: any): void {
-    this.ensureOFormValue(event);
-    if (this._fControl && this._fControl.touched) {
-      this._fControl.markAsDirty();
-    }
-    this.onChange.emit(event);
   }
 
   public fileSelected(event: Event): void {
@@ -275,6 +267,14 @@ export class OFileInputComponent extends OFormDataComponent implements OnInit {
     }
   }
 
+  public innerOnChange(event: any): void {
+    this.ensureOFormValue(event);
+    if (this._fControl && this._fControl.touched) {
+      this._fControl.markAsDirty();
+    }
+    this.onChange.emit(event);
+  }
+
   protected filetypeValidator(control: FormControl): ValidationErrors {
     if (control.value && control.value.length > 0 && this.acceptFileType) {
       const regex: RegExp = new RegExp(this.acceptFileType.replace(';', '|'));
@@ -314,6 +314,7 @@ export class OFileInputComponent extends OFormDataComponent implements OnInit {
     }
     return {};
   }
+
 
 }
 

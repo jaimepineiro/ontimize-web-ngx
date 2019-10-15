@@ -1,19 +1,21 @@
-import { Component, ViewEncapsulation, Injector, ComponentFactoryResolver, ViewContainerRef, ViewChildren, QueryList, ViewChild, AfterViewInit, EventEmitter, OnDestroy, ChangeDetectorRef } from '@angular/core';
-import { MatTabGroup, MatTabChangeEvent } from '@angular/material';
-import { Subscription } from 'rxjs';
-import { Util, Codes } from '../../../utils';
+import { AfterViewInit, Component, ComponentFactoryResolver, ElementRef, EventEmitter, Injector, OnDestroy, QueryList, ViewChild, ViewChildren, ViewContainerRef, ViewEncapsulation } from '@angular/core';
+import { MatTabChangeEvent, MatTabGroup } from '@angular/material';
 import { Router } from '@angular/router';
+import { BehaviorSubject, Subscription } from 'rxjs';
 import { DialogService } from '../../../services/dialog.service';
+import { ONavigationItem } from '../../../services/navigation.service';
+import { Codes, Util } from '../../../utils';
 import { OFormLayoutManagerContentDirective } from '../directives/o-form-layout-manager-content.directive';
 import { IDetailComponentData, OFormLayoutManagerComponent } from '../o-form-layout-manager.component';
-import { ONavigationItem } from '../../../services/navigation.service';
 
 export const DEFAULT_INPUTS_O_FORM_LAYOUT_TABGROUP = [
-  'title'
+  'title',
+  'options'
 ];
 
 export const DEFAULT_OUTPUTS_O_FORM_LAYOUT_TABGROUP = [
   'onMainTabSelected',
+  'onSelectedTabChange',
   'onCloseTab'
 ];
 
@@ -35,9 +37,11 @@ export class OFormLayoutTabGroupComponent implements AfterViewInit, OnDestroy {
   public static DEFAULT_OUTPUTS_O_FORM_LAYOUT_TABGROUP = DEFAULT_OUTPUTS_O_FORM_LAYOUT_TABGROUP;
 
   protected formLayoutManager: OFormLayoutManagerComponent;
-  data: IDetailComponentData[] = [];
-  selectedTabIndex: number | null;
-  title: string;
+  public data: IDetailComponentData[] = [];
+  public selectedTabIndex: number | null;
+  public title: string;
+  public options: any;
+  public showLoading = new BehaviorSubject<boolean>(false);
   protected _state: any;
 
   @ViewChild('tabGroup') tabGroup: MatTabGroup;
@@ -49,11 +53,15 @@ export class OFormLayoutTabGroupComponent implements AfterViewInit, OnDestroy {
   protected loading: boolean = false;
   protected dialogService: DialogService;
 
+  public onMainTabSelected: EventEmitter<any> = new EventEmitter<any>();
+  public onSelectedTabChange: EventEmitter<any> = new EventEmitter<any>();
+  public onCloseTab: EventEmitter<any> = new EventEmitter<any>();
+
   constructor(
     protected injector: Injector,
     protected componentFactoryResolver: ComponentFactoryResolver,
     protected location: ViewContainerRef,
-    private cd: ChangeDetectorRef
+    protected elRef: ElementRef
   ) {
     this.dialogService = injector.get(DialogService);
     this.formLayoutManager = this.injector.get(OFormLayoutManagerComponent);
@@ -61,6 +69,7 @@ export class OFormLayoutTabGroupComponent implements AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit() {
+
     this.tabsDirectivesSubscription = this.tabsDirectives.changes.subscribe(changes => {
       if (this.tabsDirectives.length) {
         const tabItem = this.tabsDirectives.last;
@@ -79,6 +88,55 @@ export class OFormLayoutTabGroupComponent implements AfterViewInit, OnDestroy {
     if (this.closeTabSubscription) {
       this.closeTabSubscription.unsubscribe();
     }
+  }
+
+
+  public get disableAnimation() {
+    return this.options && this.options.disableAnimation;
+  }
+
+  public get headerPosition() {
+    let headerPosition;
+    if (this.options && this.options.headerPosition) {
+      headerPosition = this.options.headerPosition;
+    }
+    return headerPosition;
+  }
+
+  public get color() {
+    let color;
+    if (this.options && this.options.color) {
+      color = this.options.color;
+    }
+    return color;
+  }
+
+  public get backgroundColor() {
+    let backgroundColor;
+    if (this.options && this.options.backgroundColor) {
+      backgroundColor = this.options.backgroundColor;
+    }
+    return backgroundColor;
+  }
+
+  public get templateMatTabLabel() {
+    let templateMatTabLabel;
+    if (this.options && this.options.templateMatTabLabel) {
+      templateMatTabLabel = this.options.templateMatTabLabel;
+    }
+    return templateMatTabLabel;
+  }
+
+  public get icon() {
+    let icon;
+    if (this.options && this.options.icon) {
+      icon = this.options.icon;
+    }
+    return icon;
+  }
+
+  public get isIconPositionLeft() {
+    return this.options && this.options.iconPosition === 'left';
   }
 
   addTab(compData: IDetailComponentData) {
@@ -122,6 +180,7 @@ export class OFormLayoutTabGroupComponent implements AfterViewInit, OnDestroy {
   onTabSelectChange(arg: MatTabChangeEvent) {
     if (this.formLayoutManager && this.tabGroup.selectedIndex === 0) {
       this.formLayoutManager.updateIfNeeded();
+      this.onMainTabSelected.emit();
     }
     if (Util.isDefined(this.state) && Util.isDefined(this.state.tabsData)) {
       if (this.state.tabsData.length > 1) {
@@ -133,30 +192,34 @@ export class OFormLayoutTabGroupComponent implements AfterViewInit, OnDestroy {
         this.state = undefined;
       }
     }
+    this.onSelectedTabChange.emit(this.data[this.selectedTabIndex - 1]);
   }
 
-  onCloseTab(id: string) {
-    if (this.formLayoutManager) {
-      const onCloseTabAccepted: EventEmitter<any> = new EventEmitter<any>();
-      const self = this;
-      this.closeTabSubscription = onCloseTabAccepted.asObservable().subscribe(res => {
-        if (res) {
-          for (let i = self.data.length - 1; i >= 0; i--) {
-            if (this.data[i].id === id) {
-              self.data.splice(i, 1);
-              break;
-            }
+  closeTab(id: string) {
+    if (!this.formLayoutManager) {
+      return;
+    }
+    const onCloseTabAccepted: EventEmitter<any> = new EventEmitter<any>();
+    const self = this;
+    this.closeTabSubscription = onCloseTabAccepted.asObservable().subscribe(res => {
+      if (res) {
+        let tabData;
+        for (let i = self.data.length - 1; i >= 0; i--) {
+          if (self.data[i].id === id) {
+            tabData = self.data.splice(i, 1)[0];
+            break;
           }
         }
-      });
-      const tabData = this.data.find((item: IDetailComponentData) => item.id === id);
-      if (Util.isDefined(tabData) && tabData.modified) {
-        this.dialogService.confirm('CONFIRM', 'MESSAGES.FORM_CHANGES_WILL_BE_LOST').then(res => {
-          onCloseTabAccepted.emit(res);
-        });
-      } else {
-        onCloseTabAccepted.emit(true);
+        self.onCloseTab.emit(tabData);
       }
+    });
+    const tabData = this.data.find((item: IDetailComponentData) => item.id === id);
+    if (Util.isDefined(tabData) && tabData.modified) {
+      this.dialogService.confirm('CONFIRM', 'MESSAGES.FORM_CHANGES_WILL_BE_LOST').then(res => {
+        onCloseTabAccepted.emit(res);
+      });
+    } else {
+      onCloseTabAccepted.emit(true);
     }
   }
 
@@ -206,6 +269,9 @@ export class OFormLayoutTabGroupComponent implements AfterViewInit, OnDestroy {
       label = label.length ? label : this.formLayoutManager.getLabelFromUrlParams(this.data[index].params);
       this.data[index].label = label;
       this.data[index].insertionMode = insertionMode;
+      if (Object.keys(data).length > 0) {
+        this.data[index].formDataByLabelColumns = this.formLayoutManager.getFormDataFromLabelColumns(data);
+      }
     }
   }
 
@@ -278,28 +344,24 @@ export class OFormLayoutTabGroupComponent implements AfterViewInit, OnDestroy {
     return newDetailComp;
   }
 
-  get showLoading(): boolean {
-    return this.loading;
-  }
-
-  set showLoading(arg: boolean) {
-    this.loading = arg;
-  }
-
   set state(arg: any) {
     this._state = arg;
     if (Util.isDefined(arg)) {
-      this.showLoading = true;
+      this.showLoading.next(true);
     } else {
-      const self = this;
-      setTimeout(() => {
-        self.showLoading = false;
-        self.cd.detectChanges();
-      }, 1000);
+      this.showLoading.next(false);
     }
   }
 
   get state(): any {
     return this._state;
+  }
+
+  getParams(): any {
+    return Util.isDefined(this.data[0]) ? this.data[0].params : undefined;
+  }
+
+  get elementRef(): ElementRef {
+    return this.elRef;
   }
 }

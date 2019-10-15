@@ -1,40 +1,32 @@
 import { ElementRef, forwardRef, Inject, Injector, Optional, ViewChild } from '@angular/core';
-
+import { MatExpansionPanel, MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material';
 import { InputConverter } from '../../decorators/input-converter';
 import { OFormComponent } from '../form/form-components';
 import { OContainerComponent } from './o-container-component.class';
-import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material';
+
 
 export const DEFAULT_INPUTS_O_CONTAINER_COLLAPSIBLE = [
   ...OContainerComponent.DEFAULT_INPUTS_O_CONTAINER,
   'expanded',
   'description',
   'collapsedHeight:collapsed-height',
-  'expandedHeight:expanded-height',
-
+  'expandedHeight:expanded-height'
 ];
 
 export class OContainerCollapsibleComponent extends OContainerComponent {
 
   public static DEFAULT_INPUTS_O_CONTAINER_COLLAPSIBLE = DEFAULT_INPUTS_O_CONTAINER_COLLAPSIBLE;
 
-  protected contentObserver = new MutationObserver(() => this.updateHeightExpansionPanelContent());
-  protected _containerCollapsibleRef;
-
-  @ViewChild('containerContent') set containerContent(elem: ElementRef) {
-    this._containerCollapsibleRef = elem;
-    if (this._containerCollapsibleRef) {
-      this.registerContentObserver();
-    } else {
-      this.unregisterContentObserver();
-    }
-  }
-
   @InputConverter()
   public expanded: boolean = true;
   public collapsedHeight = '37px';
   public expandedHeight = '37px';
   public description: string;
+
+  protected contentObserver = new MutationObserver(() => this.updateHeightExpansionPanelContent());
+  @ViewChild('expPanel') expPanel: MatExpansionPanel;
+  protected _containerCollapsibleRef: ElementRef<HTMLElement>;
+
 
   constructor(
     @Optional() @Inject(forwardRef(() => OFormComponent)) protected form: OFormComponent,
@@ -45,6 +37,14 @@ export class OContainerCollapsibleComponent extends OContainerComponent {
     super(form, elRef, injector, matFormDefaultOption);
   }
 
+  ngAfterViewInit(): void {
+    if (this.expPanel) {
+      this._containerCollapsibleRef = this.expPanel._body;
+      this.registerContentObserver();
+    } else {
+      this.unregisterContentObserver();
+    }
+  }
   protected updateOutlineGap(): void {
     if (this.isAppearanceOutline()) {
       const exPanelHeader = this._titleEl ? (this._titleEl as any)._element.nativeElement : null;
@@ -71,7 +71,7 @@ export class OContainerCollapsibleComponent extends OContainerComponent {
         titleWidth = titleWidth === 0 ? 0 : titleWidth + 4;
       }
 
-      let descrWidth = this.description ? descrEl.querySelector('span').offsetWidth + 8 : 0;
+      const descrWidth = this.description ? descrEl.querySelector('span').offsetWidth + 8 : 0;
       const empty1Width = descrStart - containerStart - 14 - titleWidth - 4;
 
       const gapTitleEls = containerOutline.querySelectorAll('.o-container-outline-gap-title');
@@ -95,26 +95,28 @@ export class OContainerCollapsibleComponent extends OContainerComponent {
   }
 
   protected updateHeightExpansionPanelContent(): void {
-    var exPanelHeader = this._titleEl ? (this._titleEl as any)._element.nativeElement : null;
-    var exPanelContent = this._containerCollapsibleRef ? this._containerCollapsibleRef.nativeElement : null;
-    var parentHeight = exPanelHeader.parentNode ? exPanelHeader.parentNode.offsetHeight : null;
+    const exPanelHeader = this._titleEl ? (this._titleEl as any)._element.nativeElement : null;
+    const exPanelContent: HTMLElement = this._containerCollapsibleRef ? this._containerCollapsibleRef.nativeElement.querySelector('.o-container-scroll') : null;
+    const parentHeight = exPanelHeader.parentNode ? exPanelHeader.parentNode.offsetHeight : null;
 
-    exPanelContent.style.height = (parentHeight - 2 - exPanelHeader.offsetHeight) + 'px';
+    const height = (OContainerComponent.APPEARANCE_OUTLINE === this.appearance) ? parentHeight : (parentHeight - exPanelHeader.offsetHeight);
+    if (height > 0) {
+      exPanelContent.style.height = height + 'px';
+    }
   }
 
-
-  unregisterContentObserver(): any {
+  protected unregisterContentObserver(): any {
     if (this.contentObserver) {
       this.contentObserver.disconnect();
     }
   }
 
-  registerContentObserver(): any {
+  protected registerContentObserver(): any {
     if (this._containerCollapsibleRef) {
       this.contentObserver.observe(this._containerCollapsibleRef.nativeElement, {
         childList: true,
-        characterData: true,
-        subtree: true
+        attributes: true,
+        attributeFilter: ['style']
       });
     }
   }

@@ -1,16 +1,17 @@
 
-import { Injector, EventEmitter } from '@angular/core';
-import { Router, NavigationStart } from '@angular/router';
-import { ObservableWrapper } from '../util/async';
+import { EventEmitter, Injector } from '@angular/core';
+import { NavigationStart, Router } from '@angular/router';
 import { AppConfig, Config } from '../config/app-config';
 import { SessionInfo } from '../services';
-import { LoginService } from './login.service';
+import { ObservableWrapper } from '../util/async';
 import { Util } from '../util/util';
+import { LoginService } from './login.service';
 
 export interface ILocalStorageComponent {
   storeState?: boolean;
   getDataToStore(): Object;
   getComponentKey(): string;
+  getRouteKey?(): string;
 }
 
 export class LocalStorageService {
@@ -30,7 +31,7 @@ export class LocalStorageService {
     this._router = this.injector.get(Router);
     this.loginService = this.injector.get(LoginService);
 
-    var self = this;
+    const self = this;
     this._router.events.subscribe(event => {
       if (event instanceof NavigationStart) {
         ObservableWrapper.callEmit(self.onRouteChange, {});
@@ -38,24 +39,27 @@ export class LocalStorageService {
     });
   }
 
-  getComponentStorage(comp: ILocalStorageComponent, useRouteOnKey: boolean = true): Object {
-    var componentKey = comp.getComponentKey();
-    var completeKey = componentKey;
-    if (useRouteOnKey) {
-      completeKey += '_' + this._router.url;
+  getComponentStorage(comp: ILocalStorageComponent, routeKey: string = undefined): Object {
+    const componentKey = comp.getComponentKey();
+    let completeKey = componentKey;
+    if (routeKey) {
+      completeKey += '_' + routeKey;
     }
     return this.getAppComponentData(completeKey) || {};
   }
 
-  updateComponentStorage(comp: ILocalStorageComponent, useRouteOnKey: boolean = true) {
-    var dataToStore = comp.getDataToStore();
-    var componentKey = comp.getComponentKey();
-    var completeKey = componentKey;
-    if (useRouteOnKey) {
-      completeKey += '_' + this._router.url;
+  updateComponentStorage(comp: ILocalStorageComponent, routeKey: string = undefined) {
+    const dataToStore = comp.getDataToStore();
+    const componentKey = comp.getComponentKey();
+    if (!Util.isDefined(componentKey)) {
+      return;
+    }
+    let completeKey = componentKey;
+    if (routeKey) {
+      completeKey += '_' + routeKey;
     }
     let storedObject = {};
-    for (var prop in dataToStore) {
+    for (let prop in dataToStore) {
       if (dataToStore.hasOwnProperty(prop)) {
         storedObject[prop] = dataToStore[prop];
       }
